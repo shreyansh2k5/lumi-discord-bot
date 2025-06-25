@@ -1,57 +1,70 @@
 import discord
 import os
-import openai
+import requests
 from dotenv import load_dotenv
 
-# Load environment variables from .env
-load_dotenv()
+# ✅ Tell Render we're running without a port
+os.environ["RENDER"] = "true"
 
+# ✅ Fake HTTP server to keep Render happy
+from threading import Thread
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+def keep_alive():
+    server = HTTPServer(("0.0.0.0", 8080), SimpleHTTPRequestHandler)
+    server.serve_forever()
+
+Thread(target=keep_alive).start()
+
+# ✅ Load environment variables
+load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# Set up Discord bot intents
+# ✅ Discord setup
 intents = discord.Intents.default()
 intents.message_content = True
+intents.messages = True
 bot = discord.Client(intents=intents)
 
-# Set OpenRouter credentials
-openai.api_key = OPENROUTER_API_KEY
-openai.api_base = "https://openrouter.ai/api/v1"
-
-# Function to query OpenRouter (Mistral 24B)
-def query_openrouter(prompt):
+# ✅ Huggingface/OpenRouter call
+def ask_openrouter(prompt):
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+        "messages": [
+            {"role": "system", "content": "You are Lumi, a flirty anime girl Discord bot. You reply with charm, exitement, playfulness with heart emojis, and affection."},
+            {"role": "user", "content": prompt}
+        ]
+    }
     try:
-        response = openai.ChatCompletion.create(
-            model="mistralai/mistral-small-3.2-24b-instruct",
-            messages=[
-                {"role": "system", "content": "You are Lumi, a flirty, playful anime girl who uses lots of emojis like 💕😚. You speak casually and tease the user sometimes."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return response["choices"][0]["message"]["content"]
+        response = requests.post(url, headers=headers, json=payload)
+        return response.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        print("Error from OpenRouter:", e)
         return f"⚠️ Error: {e}"
 
-# Bot is ready
+# ✅ Bot events
 @bot.event
 async def on_ready():
-    print(f"💫 LUMI is online as {bot.user}")
+    print(f"🤖 Lumi is online as {bot.user}")
 
-# Handle messages (mention or reply)
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
         return
 
     mentioned = bot.user in message.mentions
-    is_reply = message.reference is not None and (
-        (await message.channel.fetch_message(message.reference.message_id)).author == bot.user
-    )
+    replied_to_bot = message.reference and message.reference.resolved and message.reference.resolved.author == bot.user
 
-    if mentioned or is_reply:
+    if mentioned or replied_to_bot:
         prompt = message.content.replace(f"<@{bot.user.id}>", "").strip()
         if not prompt:
-            prompt = "Say something cute to me!"
-        reply = query_openrouter(prompt)
+            prompt = "Hey Lumi!"  # fallback
+        reply = ask_openrouter(prompt)
         await message.channel.send(reply)
+
+bot.run(DISCORD_TOKEN)
