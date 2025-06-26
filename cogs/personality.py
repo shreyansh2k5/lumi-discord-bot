@@ -10,7 +10,7 @@ def get_system_prompt():
 
 def get_model_config():
     return {
-        "model": "meta-llama/llama-3.1-8b-instruct:free",
+        "model": "meta-llama/llama-3.3-70b-instruct:free",
         "temperature": 0.8,  # playful/creative
         "top_p": 0.9,
         "max_tokens": 1024
