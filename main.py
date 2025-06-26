@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 from discord.ext import commands
 from threading import Thread
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+from cogs.personality import get_system_prompt, get_model_config
+
 
 # ✅ Tell Render we're running without a port
 os.environ["RENDER"] = "true"
@@ -40,7 +42,12 @@ def ask_openrouter(user_id, prompt):
         user_memory[user_id] = []
 
     memory = user_memory[user_id]
-    messages = [{"role": "system", "content": "You are Lumi, a flirty anime girl Discord bot. You reply with charm, playfulness, and heart emojis."}]
+    
+    config = get_model_config()
+system_prompt = get_system_prompt()
+
+messages = [{"role": "system", "content": system_prompt}]
+
 
     for m in memory:
         messages.append({"role": "user", "content": m["user"]})
@@ -49,9 +56,12 @@ def ask_openrouter(user_id, prompt):
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": "meta-llama/llama-3.1-8b-instruct:free",
-        "messages": messages
-    }
+    "model": config["model"],
+    "temperature": config["temperature"],
+    "top_p": config["top_p"],
+    "max_tokens": config["max_tokens"],
+    "messages": messages
+}
 
     try:
         response = requests.post(url, headers=headers, json=payload)
