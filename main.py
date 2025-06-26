@@ -32,6 +32,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)  # Slash commands don't 
 user_memory = {}
 
 def ask_openrouter(user_id, prompt):
+    from cogs.personality import get_model_config, get_system_prompt
+
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -55,9 +57,15 @@ def ask_openrouter(user_id, prompt):
 
     try:
         response = requests.post(url, headers=headers, json=payload)
-        bot_reply = response.json()["choices"][0]["message"]["content"]
+        data = response.json()
+
+        if "choices" not in data:
+            return f"⚠️ OpenRouter Error: {data.get('error', 'No choices returned')}"
+
+        bot_reply = data["choices"][0]["message"]["content"]
         user_memory[user_id].append({"user": prompt, "bot": bot_reply})
         return bot_reply
+
     except Exception as e:
         return f"⚠️ Error: {e}"
 
