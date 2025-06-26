@@ -27,25 +27,41 @@ intents.message_content = True
 intents.messages = True
 bot = discord.Client(intents=intents)
 
-# ✅ Huggingface/OpenRouter call
-def ask_openrouter(prompt):
+# ✅ memory 
+def ask_openrouter(user_id, prompt):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
+
+    # Get memory
+    memory = user_memory[user_id]
+    messages = [{"role": "system", "content": "You are Lumi, a flirty anime girl Discord bot. You reply with charm, playfulness, and heart emojis."}]
+    
+    for m in memory:
+        messages.append({"role": "user", "content": m["user"]})
+        messages.append({"role": "assistant", "content": m["bot"]})
+    
+    # Append current prompt
+    messages.append({"role": "user", "content": prompt})
+
     payload = {
         "model": "mistralai/mistral-small-3.2-24b-instruct:free",
-        "messages": [
-            {"role": "system", "content": "You are Lumi, a flirty anime girl Discord bot. You reply with charm, exitement, playfulness with heart emojis, and affection."},
-            {"role": "user", "content": prompt}
-        ]
+        "messages": messages
     }
+
     try:
         response = requests.post(url, headers=headers, json=payload)
-        return response.json()["choices"][0]["message"]["content"]
+        bot_reply = response.json()["choices"][0]["message"]["content"]
+        
+        # Save to memory
+        user_memory[user_id].append({"user": prompt, "bot": bot_reply})
+        return bot_reply
+
     except Exception as e:
         return f"⚠️ Error: {e}"
+
 
 # ✅ Bot events
 @bot.event
