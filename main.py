@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from discord.ext import commands
 from threading import Thread
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from cogs.personality import get_system_prompt, get_model_config
+from cogs.personality import get_model_config, get_system_prompt
 
 
 # ✅ Tell Render we're running without a port
@@ -28,7 +28,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)  # Slash commands don't use the prefix
 
-# ✅ In-memory conversation history
+# Memory setup
 user_memory = {}
 
 def ask_openrouter(user_id, prompt):
@@ -42,12 +42,7 @@ def ask_openrouter(user_id, prompt):
         user_memory[user_id] = []
 
     memory = user_memory[user_id]
-    
-    config = get_model_config()
-system_prompt = get_system_prompt()
-
-messages = [{"role": "system", "content": system_prompt}]
-
+    messages = [{"role": "system", "content": get_system_prompt()}]
 
     for m in memory:
         messages.append({"role": "user", "content": m["user"]})
@@ -55,13 +50,8 @@ messages = [{"role": "system", "content": system_prompt}]
 
     messages.append({"role": "user", "content": prompt})
 
-    payload = {
-    "model": config["model"],
-    "temperature": config["temperature"],
-    "top_p": config["top_p"],
-    "max_tokens": config["max_tokens"],
-    "messages": messages
-}
+    payload = get_model_config()
+    payload["messages"] = messages
 
     try:
         response = requests.post(url, headers=headers, json=payload)
