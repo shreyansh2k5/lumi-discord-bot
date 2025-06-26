@@ -1,3 +1,5 @@
+# bot_config.py (Fresh, without !lumi feature)
+
 import discord
 from replicate_api import query_replicate
 from personality import apply_personality
@@ -9,9 +11,9 @@ intents.message_content = True
 client = discord.Client(intents=intents)
 
 MENTION_REPLIES = [
-    "Yes? You called me? 💫",
+    "Yes? You called me? 🌟",
     "Aww, you mentioned me? 😳",
-    "What's up, cutie? 😘",
+    "What's up, cutie? 😝",
     "You need me? I'm here 💖"
 ]
 
@@ -22,20 +24,12 @@ async def on_message(message):
 
     user_input = message.content.strip()
 
-    # Case 1: !lumi command
-    if user_input.startswith("!lumi"):
-        query = user_input[len("!lumi"):].strip()
-        prompt = apply_personality(query)
-        await message.channel.send("💬 Lumi is thinking...")
-        response = await query_replicate(prompt)
-        await message.channel.send(response)
-
-    # Case 2: Mention
-    elif client.user in message.mentions:
+    # Case 1: Mention
+    if client.user in message.mentions:
         mention_reply = random.choice(MENTION_REPLIES)
         await message.channel.send(mention_reply)
 
-        # Remove bot mention from input
+        # Remove mention from prompt
         user_prompt = message.clean_content.replace(f"@{client.user.name}", "").strip()
         if not user_prompt:
             user_prompt = "Say something cute!"
@@ -44,12 +38,12 @@ async def on_message(message):
         response = await query_replicate(prompt)
         await message.channel.send(response)
 
-    # Case 3: Reply to bot
+    # Case 2: Reply to Lumi
     elif message.reference:
         replied = await message.channel.fetch_message(message.reference.message_id)
         if replied.author == client.user:
             prompt = apply_personality(user_input)
-            await message.channel.send("📝 You replied to me? Let me answer...")
+            await message.channel.send("🖋️ You replied to me? Let me answer...")
             response = await query_replicate(prompt)
             await message.channel.send(response)
 
