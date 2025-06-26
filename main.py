@@ -89,7 +89,7 @@ async def on_message(message):
         prompt = message.content.replace(f"<@{bot.user.id}>", "").strip()
         if not prompt:
             prompt = "Hey Lumi!"  # fallback
-        reply = ask_openrouter(prompt)
+        reply = ask_openrouter(message.author.id, prompt)
         await message.channel.send(reply)
         
 # ✅ Load all cogs from /cogs
