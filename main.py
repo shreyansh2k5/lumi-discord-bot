@@ -1,34 +1,33 @@
-import discord
 import os
+import discord
 import requests
 from dotenv import load_dotenv
+from discord.ext import commands
+from threading import Thread
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 # ✅ Tell Render we're running without a port
 os.environ["RENDER"] = "true"
 
 # ✅ Fake HTTP server to keep Render happy
-from threading import Thread
-from http.server import HTTPServer, SimpleHTTPRequestHandler
-
 def keep_alive():
     server = HTTPServer(("0.0.0.0", 8080), SimpleHTTPRequestHandler)
     server.serve_forever()
 
 Thread(target=keep_alive).start()
 
-# ✅ Load environment variables
+# ✅ Load .env variables
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# ✅ Discord setup
+# ✅ Discord bot setup
 intents = discord.Intents.default()
 intents.message_content = True
-intents.messages = True
-bot = discord.Client(intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents)  # Slash commands don't use the prefix
 
-#MEMORY FEATURE
-user_memory = {}  # ✅ global dictionary outside the function
+# ✅ In-memory conversation history
+user_memory = {}
 
 def ask_openrouter(user_id, prompt):
     url = "https://openrouter.ai/api/v1/chat/completions"
@@ -37,51 +36,43 @@ def ask_openrouter(user_id, prompt):
         "Content-Type": "application/json"
     }
 
-    # ✅ Initialize memory for new user
     if user_id not in user_memory:
         user_memory[user_id] = []
 
-    # Build the message history
     memory = user_memory[user_id]
     messages = [{"role": "system", "content": "You are Lumi, a flirty anime girl Discord bot. You reply with charm, playfulness, and heart emojis."}]
-    
+
     for m in memory:
         messages.append({"role": "user", "content": m["user"]})
         messages.append({"role": "assistant", "content": m["bot"]})
-    
+
     messages.append({"role": "user", "content": prompt})
 
     payload = {
-        "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+        "model": "meta-llama/llama-3.1-8b-instruct:free",
         "messages": messages
     }
 
     try:
         response = requests.post(url, headers=headers, json=payload)
         bot_reply = response.json()["choices"][0]["message"]["content"]
-        
-        # ✅ Store interaction
         user_memory[user_id].append({"user": prompt, "bot": bot_reply})
         return bot_reply
-
     except Exception as e:
         return f"⚠️ Error: {e}"
-
 
 # ✅ Bot events
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     print(f"🤖 Lumi is online as {bot.user}")
-
-    # 🎮 Rich presence setup
     activity = discord.Activity(
-        type=discord.ActivityType.watching,  # Change this to .playing, .listening, .competing
-        name=" In ur heart 💖"
+        type=discord.ActivityType.watching,
+        name="In ur heart 💖"
     )
     await bot.change_presence(status=discord.Status.idle, activity=activity)
 
-
-
+# ✅ Mention/reply chat behavior
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -93,14 +84,17 @@ async def on_message(message):
     if mentioned or replied_to_bot:
         prompt = message.content.replace(f"<@{bot.user.id}>", "").strip()
         if not prompt:
-            prompt = "Hey Lumi!"  # fallback
+            prompt = "Hey Lumi!"  # Fallback if no actual message
         reply = ask_openrouter(message.author.id, prompt)
         await message.channel.send(reply)
-        
-# ✅ Load all cogs from /cogs
+
+    await bot.process_commands(message)  # Important for slash commands to work with on_message
+
+# ✅ Load all cogs in /cogs
 async def load_extensions():
     for filename in os.listdir("./cogs"):
         if filename.endswith(".py"):
             await bot.load_extension(f"cogs.{filename[:-3]}")
-                    
+
+bot.loop.create_task(load_extensions())
 bot.run(DISCORD_TOKEN)
