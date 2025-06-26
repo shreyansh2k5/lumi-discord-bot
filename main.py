@@ -49,8 +49,14 @@ def ask_openrouter(prompt):
 
 # ✅ Bot events
 @bot.event
+@bot.event
 async def on_ready():
     print(f"🤖 Lumi is online as {bot.user}")
+
+    # Set rich presence / activity
+    discord.Activity(type=discord.ActivityType.watching, name="you sleep")
+    await bot.change_presence(status=discord.Status.idle, activity=activity)
+
 
 @bot.event
 async def on_message(message):
