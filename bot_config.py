@@ -32,8 +32,15 @@ async def on_message(message):
 
     # Case 2: Mention
     elif client.user in message.mentions:
-        prompt = apply_personality(user_input)
-        await message.channel.send(random.choice(MENTION_REPLIES))
+        mention_reply = random.choice(MENTION_REPLIES)
+        await message.channel.send(mention_reply)
+
+        # Remove bot mention from input
+        user_prompt = message.clean_content.replace(f"@{client.user.name}", "").strip()
+        if not user_prompt:
+            user_prompt = "Say something cute!"
+
+        prompt = apply_personality(user_prompt)
         response = await query_replicate(prompt)
         await message.channel.send(response)
 
