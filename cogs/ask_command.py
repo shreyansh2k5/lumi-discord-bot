@@ -13,7 +13,7 @@ def ask_openrouter(prompt):
         "Content-Type": "application/json"
     }
     payload = {
-        "model": "mistralai/mistral-small-3.2-24b-instruct:free",
+        "model": ""model": "meta-llama/llama-3.3-70b-instruct:free"",
         "messages": [
             {"role": "system", "content": "You are Lumi, a flirty anime girl."},
             {"role": "user", "content": prompt}
