@@ -96,5 +96,4 @@ async def load_extensions():
         if filename.endswith(".py"):
             await bot.load_extension(f"cogs.{filename[:-3]}")
 
-bot.loop.create_task(load_extensions())
 bot.run(DISCORD_TOKEN)
