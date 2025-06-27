@@ -1,60 +1,58 @@
 # bot_config.py
 
 import discord
-from itertools import cycle
+import random
 from huggingface_api import query_mistral as query_model
 from personality import apply_personality
 
-# Enable message content intent
 intents = discord.Intents.default()
 intents.message_content = True
 
 client = discord.Client(intents=intents)
 
-# Rotating mention replies — no repetition
+# 💬 Mention replies — only pick one at a time
 MENTION_REPLIES = [
-    "Yes? You called me? 🌸",
-    "Aww, you mentioned me? 😳",
-    "What’s up, cutie? 💕",
-    "Need me? I’m right here! ✨"
+    "Yes? 🌸",
+    "You need me? 😊",
+    "Hey cutie 💖",
+    "Hi there~ ✨"
 ]
-mention_cycle = cycle(MENTION_REPLIES)
 
-MAX_RESPONSE_LENGTH = 300  # Limit long model replies
+# Track last mention to avoid repetition
+last_mention_reply = None
 
 @client.event
 async def on_message(message):
+    global last_mention_reply
+
     if message.author == client.user:
         return
 
     user_input = message.content.strip()
 
-    # Case 1: Mentioning Lumi
+    # Case 1: User @mentions Lumi
     if client.user in message.mentions:
-        # Send next mention reply from cycle (non-repeating)
-        await message.channel.send(next(mention_cycle))
+        # Random mention reply, but not repeated
+        mention = random.choice([m for m in MENTION_REPLIES if m != last_mention_reply])
+        last_mention_reply = mention
+        await message.channel.send(mention)
 
         user_prompt = message.clean_content.replace(f"@{client.user.name}", "").strip()
         if not user_prompt:
-            user_prompt = "Say something cute!"
+            user_prompt = "Say something short and cute!"
 
         prompt = apply_personality(user_prompt)
         response = query_model(prompt)
+        await message.channel.send(response)
 
-        reply = response.strip().split("\n")[0][:MAX_RESPONSE_LENGTH]
-        await message.channel.send(reply or "💬 I didn’t get that, try again?")
-
-    # Case 2: Reply to Lumi
+    # Case 2: Reply to Lumi's previous message
     elif message.reference:
         replied_msg = await message.channel.fetch_message(message.reference.message_id)
         if replied_msg.author == client.user:
             prompt = apply_personality(user_input)
-            await message.channel.send("🖋️ You replied to me? Let me think...")
+            await message.channel.send("🖋️ Let me think...")
+            response = query_model(prompt)
+            await message.channel.send(response)
 
-            response = await query_model(prompt)
-            reply = response.strip().split("\n")[0][:MAX_RESPONSE_LENGTH]
-            await message.channel.send(reply or "💬 I didn’t get that, try again?")
-
-# Export client for main.py
 def get_client():
     return client
