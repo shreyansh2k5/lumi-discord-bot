@@ -5,7 +5,7 @@ import aiohttp
 from personality import get_temperature
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
+MODEL_ID = "llama3-8b-8192"
 
 HEADERS = {
     "Authorization": f"Bearer {GROQ_API_KEY}",
