@@ -1,7 +1,15 @@
+# keep_alive.py
+from flask import Flask
 from threading import Thread
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Lumi bot is up and running!"
 
 def keep_alive():
-    server = HTTPServer(("0.0.0.0", 8080), SimpleHTTPRequestHandler)
-    Thread(target=server.serve_forever).start()
-
+    Thread(target=app.run, kwargs={
+        'host': '0.0.0.0',
+        'port': 8080
+    }).start()
