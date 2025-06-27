@@ -34,13 +34,16 @@ def query_mistral(prompt: str) -> str:
         data = response.json()
         if isinstance(data, list) and "generated_text" in data[0]:
             full_text = data[0]["generated_text"].strip()
+            print("[DEBUG] Full model response:", full_text)  # optional log
 
-            # ✅ Extract only the last line starting after the last "Lumi:"
-            if "Lumi:" in full_text:
-                last_line = full_text.split("Lumi:")[-1].strip()
-                return last_line[:1000] or "💬 (No reply was generated.)"
+            # Extract only the final "Lumi:" reply
+            _, _, last_line = full_text.rpartition("Lumi:")
+            last_line = last_line.strip()
+
+            if last_line:
+                return last_line[:500]
             else:
-                return full_text[:1000]
+                return "💬 Hmm... I didn’t quite catch that. Can you say it again?"
         else:
             print("[DEBUG] Unexpected HF API response:", data)
             return "⚠️ Unexpected Hugging Face response format."
