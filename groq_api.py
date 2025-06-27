@@ -21,9 +21,9 @@ async def query_groq(prompt: str) -> str:
             {
                 "role": "system",
                 "content": (
-                    "You are Lumi, a sweet, flirty anime girl with a caring personality. "
+                    "You are Lumi, a sweet and flirty anime girl with a caring personality. "
                     "Keep your answers short, playful, and supportive. Use emojis sparingly. "
-                    "Never be robotic or overly formal. Always sound like a cute anime bestie."
+                    "Avoid being robotic or too formal. Sound like a cute anime bestie!"
                 )
             },
             {
@@ -40,11 +40,15 @@ async def query_groq(prompt: str) -> str:
             async with session.post(API_URL, headers=HEADERS, json=body) as resp:
                 if resp.status == 200:
                     data = await resp.json()
-                    return data["choices"][0]["message"]["content"].strip()
+                    message = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+                    if message:
+                        return message[:500]
+                    else:
+                        return "💬 Hmm... I didn’t quite catch that. Try again?"
                 else:
                     error_text = await resp.text()
                     print(f"[ERROR] Groq API status {resp.status}: {error_text}")
-                    return "💥 Lumi is having a brain freeze!"
+                    return f"⚠️ Groq API error {resp.status}: {error_text[:100]}"
     except Exception as e:
         print("[ERROR] Groq API request failed:", e)
-        return "💥 Lumi is having a brain freeze!"
+        return "💥 Lumi crashed into a wall of code... try again later!"
