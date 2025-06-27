@@ -1,7 +1,7 @@
 # bot_config.py (Fresh, without !lumi feature)
 
 import discord
-from replicate_api import query_replicate
+from huggingface_api import query_mistral as query_model
 from personality import apply_personality
 import random
 
@@ -35,7 +35,7 @@ async def on_message(message):
             user_prompt = "Say something cute!"
 
         prompt = apply_personality(user_prompt)
-        response = await query_replicate(prompt)
+        response = query_model(prompt)
         await message.channel.send(response)
 
     # Case 2: Reply to Lumi
@@ -44,7 +44,7 @@ async def on_message(message):
         if replied.author == client.user:
             prompt = apply_personality(user_input)
             await message.channel.send("🖋️ You replied to me? Let me answer...")
-            response = await query_replicate(prompt)
+            response = query_model(prompt)
             await message.channel.send(response)
 
 def get_client():
