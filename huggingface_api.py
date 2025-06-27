@@ -17,7 +17,7 @@ def query_mistral(prompt: str) -> str:
         "inputs": prompt,
         "parameters": {
             "temperature": get_temperature(),
-            "max_new_tokens": 300,
+            "max_new_tokens": 120,
             "do_sample": True
         }
     }
