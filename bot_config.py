@@ -1,7 +1,7 @@
 # bot_config.py
 
 import discord
-from huggingface_api import query_mistral as query_model
+from groq_api import query_groq as query_model
 from personality import apply_personality
 
 intents = discord.Intents.default()
