@@ -1,35 +1,50 @@
 # groq_api.py
 
 import os
-import requests
+import aiohttp
 from personality import get_temperature
-from dotenv import load_dotenv
-
-load_dotenv()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MODEL_ID = "llama3-8b-8192"
+MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
 
-def query_groq(prompt: str) -> str:
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {GROQ_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    data = {
+HEADERS = {
+    "Authorization": f"Bearer {GROQ_API_KEY}",
+    "Content-Type": "application/json"
+}
+
+API_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+async def query_groq(prompt: str) -> str:
+    body = {
         "model": MODEL_ID,
         "messages": [
-            {"role": "system", "content": "You are Lumi, a flirty and playful anime girl who is caring and witty. Keep replies short, cute, and in-character."},
-            {"role": "user", "content": prompt}
+            {
+                "role": "system",
+                "content": (
+                    "You are Lumi, a sweet, flirty anime girl with a caring personality. "
+                    "Keep your answers short, playful, and supportive. Use emojis sparingly. "
+                    "Never be robotic or overly formal. Always sound like a cute anime bestie."
+                )
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
         ],
         "temperature": get_temperature(),
-        "max_tokens": 200
+        "max_tokens": 300
     }
 
     try:
-        res = requests.post(url, headers=headers, json=data)
-        res.raise_for_status()
-        return res.json()["choices"][0]["message"]["content"].strip()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(API_URL, headers=HEADERS, json=body) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    return data["choices"][0]["message"]["content"].strip()
+                else:
+                    error_text = await resp.text()
+                    print(f"[ERROR] Groq API status {resp.status}: {error_text}")
+                    return "💥 Lumi is having a brain freeze!"
     except Exception as e:
-        print("[ERROR] Groq API:", e)
+        print("[ERROR] Groq API request failed:", e)
         return "💥 Lumi is having a brain freeze!"
