@@ -27,13 +27,20 @@ def query_mistral(prompt: str) -> str:
             f"https://api-inference.huggingface.co/models/{MODEL_ID}",
             headers=headers,
             json=payload,
-            timeout=30  # Optional: prevent infinite waiting
+            timeout=30
         )
         response.raise_for_status()
 
         data = response.json()
         if isinstance(data, list) and "generated_text" in data[0]:
-            return data[0]["generated_text"].strip()
+            full_text = data[0]["generated_text"].strip()
+
+            # ✅ Extract only the last line starting after the last "Lumi:"
+            if "Lumi:" in full_text:
+                last_line = full_text.split("Lumi:")[-1].strip()
+                return last_line[:1000] or "💬 (No reply was generated.)"
+            else:
+                return full_text[:1000]
         else:
             print("[DEBUG] Unexpected HF API response:", data)
             return "⚠️ Unexpected Hugging Face response format."
