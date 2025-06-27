@@ -5,7 +5,7 @@ import requests
 from personality import get_temperature
 
 API_TOKEN = os.getenv("HF_API_TOKEN")
-MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.2"
+MODEL_ID = "HuggingFaceH4/zephyr-7b-beta"
 
 def query_mistral(prompt: str) -> str:
     headers = {
