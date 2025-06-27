@@ -39,7 +39,7 @@ async def on_message(message):
             user_prompt = "Say something cute!"
 
         prompt = apply_personality(user_prompt)
-        response = await query_model(prompt)
+        response = query_model(prompt)
 
         reply = response.strip().split("\n")[0][:MAX_RESPONSE_LENGTH]
         await message.channel.send(reply or "💬 I didn’t get that, try again?")
