@@ -23,7 +23,7 @@ async def on_message(message):
             user_prompt = "Say something cute!"
 
         prompt = apply_personality(user_prompt)
-        response = query_model(prompt)
+        response = await query_model(prompt)  # ✅ FIXED: Added await
         await message.channel.send(response)
 
     # Case 2: Replying to Lumi
@@ -32,7 +32,7 @@ async def on_message(message):
         if replied_msg.author == client.user:
             prompt = apply_personality(user_input)
             await message.channel.send("🖋️ You replied to me? Let me think...")
-            response = await query_model(prompt)
+            response = await query_model(prompt)  # ✅ FIXED: Added await
             await message.channel.send(response)
 
 def get_client():
