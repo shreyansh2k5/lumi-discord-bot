@@ -3,7 +3,7 @@
 import discord
 from groq_api import query_groq as query_model
 from personality import apply_personality
-from memory_store import add_to_memory, get_memory  # ✅ NEW
+from memory_store import get_memory, add_to_memory
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -16,31 +16,38 @@ async def on_message(message):
         return
 
     user_input = message.content.strip()
-    user_id = str(message.author.id)  # ✅ NEW
+    user_id = str(message.author.id)
 
-    # ✅ Store user's message in memory
-    add_to_memory(user_id, f"User: {user_input}")
-
-    # ✅ Get memory history and append current user message
-    history = "\n".join(get_memory(user_id))
-    full_prompt = f"{history}\nUser: {user_input}"
-    prompt = apply_personality(full_prompt)
-
-    # ✅ Make sure only one block is triggered
-    # Case 1: Mentioned Lumi
+    # ✅ Mentioned Lumi directly (not a reply)
     if client.user in message.mentions and not message.reference:
+        user_prompt = message.clean_content.replace(f"@{client.user.name}", "").strip()
+        if not user_prompt:
+            user_prompt = "Say something cute!"
+
+        # Include memory
+        memory = get_memory(user_id)
+        final_prompt = f"{memory}\nUser: {user_prompt}"
+        prompt = apply_personality(final_prompt)
+
         response = await query_model(prompt)
+        add_to_memory(user_id, f"User: {user_prompt}")
+        add_to_memory(user_id, f"Lumi: {response}")
+
         await message.channel.send(response)
 
-    # Case 2: Replied to Lumi
+    # ✅ Replied to Lumi
     elif message.reference:
         replied_msg = await message.channel.fetch_message(message.reference.message_id)
         if replied_msg.author == client.user:
-            response = await query_model(prompt)
-            await message.channel.send(response)
+            memory = get_memory(user_id)
+            final_prompt = f"{memory}\nUser: {user_input}"
+            prompt = apply_personality(final_prompt)
 
-    # ✅ Save Lumi's reply in memory
-    add_to_memory(user_id, f"Lumi: {response}")
+            response = await query_model(prompt)
+            add_to_memory(user_id, f"User: {user_input}")
+            add_to_memory(user_id, f"Lumi: {response}")
+
+            await message.channel.send(response)
 
 def get_client():
     return client
