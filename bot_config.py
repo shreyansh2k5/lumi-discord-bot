@@ -1,11 +1,9 @@
-# bot_config.py
-
 import discord
 from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
-from slash_commands import setup_slash_commands
+from slash_commands import setup_slash_commands  # ✅ async function
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -14,13 +12,12 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 
 @bot.event
 async def on_ready():
-    setup_slash_commands(bot)
+    await setup_slash_commands(bot)  # ✅ FIXED: await this async function
     await bot.tree.sync()
     print(f"✅ Logged in as {bot.user} and slash commands synced.")
 
 @bot.event
 async def on_message(message):
-    # Required to make sure slash commands still work
     await bot.process_commands(message)
 
     if message.author == bot.user:
@@ -29,7 +26,7 @@ async def on_message(message):
     user_input = message.content.strip()
     user_id = str(message.author.id)
 
-    # ✅ Mentioned Lumi directly (not a reply)
+    # ✅ Mentioned Lumi directly
     if bot.user in message.mentions and not message.reference:
         user_prompt = message.clean_content.replace(f"@{bot.user.name}", "").strip()
         if not user_prompt:
