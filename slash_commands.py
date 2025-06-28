@@ -13,14 +13,15 @@ async def setup_slash_commands(bot: discord.Client):
         result = random.choice(["Heads", "Tails"])
         await interaction.response.send_message(f"🪙 You got **{result}**!")
 
+    # 📊 /status
     @bot.tree.command(name="status", description="Check Lumi's status 📊")
-async def status(interaction: discord.Interaction):
-    latency = round(bot.latency * 1000)
-    await interaction.response.send_message(
-        f"🛰️ Online as **{bot.user.name}**\n"
-        f"📡 Latency: `{latency}ms`\n"
-        f"🧠 Model: LLaMA-3 (via Groq API)"
-    )
+    async def status(interaction: discord.Interaction):
+        latency = round(bot.latency * 1000)
+        await interaction.response.send_message(
+            f"🛰️ Online as **{bot.user.name}**\n"
+            f"📡 Latency: `{latency}ms`\n"
+            f"🧠 Model: LLaMA-3 (via Groq API)"
+        )
 
 
     # Register commands
