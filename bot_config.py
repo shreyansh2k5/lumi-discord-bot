@@ -1,20 +1,15 @@
+# bot_config.py
+
 import discord
 from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
-from slash_commands import setup_slash_commands  # ✅ async function
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="/", intents=intents)
-
-@bot.event
-async def on_ready():
-    await setup_slash_commands(bot)  # ✅ FIXED: await this async function
-    await bot.tree.sync()
-    print(f"✅ Logged in as {bot.user} and slash commands synced.")
 
 @bot.event
 async def on_message(message):
