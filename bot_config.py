@@ -1,30 +1,40 @@
 # bot_config.py
 
 import discord
+from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
+from slash_commands import setup_slash_commands
 
 intents = discord.Intents.default()
 intents.message_content = True
 
-client = discord.Client(intents=intents)
+bot = commands.Bot(command_prefix=commands.when_mentioned_or(), intents=intents)
 
-@client.event
+@bot.event
+async def on_ready():
+    setup_slash_commands(bot)
+    await bot.tree.sync()
+    print(f"✅ Logged in as {bot.user} and slash commands synced.")
+
+@bot.event
 async def on_message(message):
-    if message.author == client.user:
+    # Required to make sure slash commands still work
+    await bot.process_commands(message)
+
+    if message.author == bot.user:
         return
 
     user_input = message.content.strip()
     user_id = str(message.author.id)
 
     # ✅ Mentioned Lumi directly (not a reply)
-    if client.user in message.mentions and not message.reference:
-        user_prompt = message.clean_content.replace(f"@{client.user.name}", "").strip()
+    if bot.user in message.mentions and not message.reference:
+        user_prompt = message.clean_content.replace(f"@{bot.user.name}", "").strip()
         if not user_prompt:
             user_prompt = "Say something cute!"
 
-        # Include memory
         memory = get_memory(user_id)
         final_prompt = f"{memory}\nUser: {user_prompt}"
         prompt = apply_personality(final_prompt)
@@ -38,7 +48,7 @@ async def on_message(message):
     # ✅ Replied to Lumi
     elif message.reference:
         replied_msg = await message.channel.fetch_message(message.reference.message_id)
-        if replied_msg.author == client.user:
+        if replied_msg.author == bot.user:
             memory = get_memory(user_id)
             final_prompt = f"{memory}\nUser: {user_input}"
             prompt = apply_personality(final_prompt)
@@ -50,4 +60,4 @@ async def on_message(message):
             await message.channel.send(response)
 
 def get_client():
-    return client
+    return bot
