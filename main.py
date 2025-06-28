@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import os
 from discord.ext.commands import Bot
 from bot_config import get_client
+from slash_commands import setup_slash_commands
 from keep_alive import keep_alive
 
 # Optional presence
@@ -14,7 +15,6 @@ except ImportError:
 
 # Load environment variables
 load_dotenv()
-
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 bot: Bot = get_client()
 
@@ -22,14 +22,15 @@ bot: Bot = get_client()
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
 
-    # Sync slash commands here
+    # ✅ Setup and sync slash commands
     try:
+        await setup_slash_commands(bot)
         await bot.tree.sync()
         print("🌐 Slash commands synced.")
     except Exception as e:
         print(f"[Slash Sync Error] {e}")
 
-    # Optional presence
+    # ✅ Optional rich presence
     if set_rich_presence:
         try:
             await set_rich_presence(bot)
