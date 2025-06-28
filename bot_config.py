@@ -10,7 +10,7 @@ from slash_commands import setup_slash_commands
 intents = discord.Intents.default()
 intents.message_content = True
 
-bot = commands.Bot(command_prefix=commands.when_mentioned_or(), intents=intents)
+bot = commands.Bot(command_prefix="/", intents=intents)
 
 @bot.event
 async def on_ready():
