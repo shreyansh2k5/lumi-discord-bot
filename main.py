@@ -21,6 +21,15 @@ bot: Bot = get_client()
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
+
+    # Sync slash commands here
+    try:
+        await bot.tree.sync()
+        print("🌐 Slash commands synced.")
+    except Exception as e:
+        print(f"[Slash Sync Error] {e}")
+
+    # Optional presence
     if set_rich_presence:
         try:
             await set_rich_presence(bot)
