@@ -1,8 +1,8 @@
 import random
 import discord
 from discord import app_commands
-from discord.app_commands import checks
 from automod import add_exception_role, get_exempt_roles, remove_exception_role
+from discord.app_commands import checks
 
 async def setup_slash_commands(bot: discord.Client):
     @app_commands.command(name="roll", description="Roll a dice 🎲")
@@ -25,14 +25,21 @@ async def setup_slash_commands(bot: discord.Client):
         )
 
     # ✅ Only server admins can run these:
-    @app_commands.command(name="add_exception_role", description="Exclude a role from auto-moderation")
-    @checks.has_permissions(manage_guild=True)  # Permission check
+      @app_commands.command(name="add_exception_role", description="Exclude a role from auto-moderation")
+    @checks.has_permissions(manage_guild=True)
     @app_commands.describe(role="Role to exclude from moderation")
     async def add_exception(interaction: discord.Interaction, role: discord.Role):
         add_exception_role(interaction.guild_id, role.name)
         await interaction.response.send_message(f"✅ `{role.name}` will now be excluded from moderation.", ephemeral=True)
 
-    @app_commands.command(name="view_exceptions", description="View currently excluded roles from moderation")
+    @app_commands.command(name="remove_exception_role", description="Remove a role from exception list")
+    @checks.has_permissions(manage_guild=True)
+    @app_commands.describe(role="Role to remove from exception list")
+    async def remove_exception(interaction: discord.Interaction, role: discord.Role):
+        remove_exception_role(interaction.guild_id, role.name)
+        await interaction.response.send_message(f"🗑️ `{role.name}` removed from exception list.", ephemeral=True)
+
+    @app_commands.command(name="view_exceptions", description="View excluded roles from moderation")
     @checks.has_permissions(manage_guild=True)
     async def view_exceptions(interaction: discord.Interaction):
         roles = get_exempt_roles(interaction.guild_id)
@@ -40,21 +47,11 @@ async def setup_slash_commands(bot: discord.Client):
             await interaction.response.send_message(f"🚫 Exempted roles: {', '.join(roles)}", ephemeral=True)
         else:
             await interaction.response.send_message("✅ No roles are currently exempted.", ephemeral=True)
-            
-# remove excluded roles
-    @app_commands.command(name="remove_exception_role", description="Remove a role from the moderation exception list")
-@checks.has_permissions(manage_guild=True)
-@app_commands.describe(role="Role to remove from exceptions")
-async def remove_exception(interaction: discord.Interaction, role: discord.Role):
-    remove_exception_role(interaction.guild_id, role.name)
-    await interaction.response.send_message(
-        f"❌ `{role.name}` has been removed from the exception list.", ephemeral=True
-    )
 
-    # ✅ Register all commands
+    # Register all commands
     bot.tree.add_command(roll)
     bot.tree.add_command(flip)
     bot.tree.add_command(status)
     bot.tree.add_command(add_exception)
-    bot.tree.add_command(view_exceptions)
     bot.tree.add_command(remove_exception)
+    bot.tree.add_command(view_exceptions)
