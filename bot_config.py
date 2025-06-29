@@ -21,19 +21,24 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # 🚨 Auto-moderation (only for users with specific roles)
-    restricted_roles = ["Member", "Unverified", "Newbie"]  # Change as per your server
-
-    if has_restricted_role(message.author, restricted_roles):
-        if check_bad_words(message.content):
-            await message.delete()
-            await message.channel.send(
-                f"⚠️ {message.author.mention}, please avoid using bad language!", delete_after=5
-            )
-            return
-
+    # 🚨 Auto-moderation check (MUST come early)
+    if message.guild:  # only moderate in servers
+        guild_id = message.guild.id
+        user_roles = [role.name for role in message.author.roles]
+        if not any(is_role_exempt(guild_id, role_name) for role_name in user_roles):
+            if check_bad_words(message.content):
+                await message.delete()
+                await message.channel.send(
+                    f"⚠️ {message.author.mention}, please avoid using inappropriate language.",
+                    delete_after=5
+                )
+                return
+                
+    # ✅ Only extract user info if safe
     user_input = message.content.strip()
     user_id = str(message.author.id)
+
+    
     # ✅ Mentioned Lumi directly
     if bot.user in message.mentions and not message.reference:
         user_prompt = message.clean_content.replace(f"@{bot.user.name}", "").strip()
