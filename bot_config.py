@@ -25,6 +25,8 @@ async def on_message(message):
     # 🚨 Auto-moderation check (MUST come early)
     if message.guild:  # only moderate in servers
         guild_id = message.guild.id
+        member = message.author
+        
         user_roles = [role.name for role in message.author.roles]
         if not any(is_role_exempt(guild_id, role_name) for role_name in user_roles):
             if check_bad_words(message.content):
