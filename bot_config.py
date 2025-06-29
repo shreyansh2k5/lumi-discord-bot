@@ -19,9 +19,17 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
+    # ✅ AutoMod: Check for bad words
+    if check_bad_words(message.content):
+        await message.delete()
+        await message.channel.send(
+            f"🚫 {message.author.mention}, that language isn’t allowed here! Please be respectful~ 🌸",
+            delete_after=5
+        )
+        return
+
     user_input = message.content.strip()
     user_id = str(message.author.id)
-
     # ✅ Mentioned Lumi directly
     if bot.user in message.mentions and not message.reference:
         user_prompt = message.clean_content.replace(f"@{bot.user.name}", "").strip()
