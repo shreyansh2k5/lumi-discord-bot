@@ -5,8 +5,8 @@ from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
-from automod import check_bad_words
-from role_exceptions import is_role_exempt
+from automod import check_bad_words, add_exception_role, get_exempt_roles, is_role_exempt
+from role_exceptions
 
 
 intents = discord.Intents.default()
