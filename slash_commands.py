@@ -14,8 +14,7 @@ async def setup_slash_commands(bot: discord.Client):
         result = random.choice(["Heads", "Tails"])
         await interaction.response.send_message(f"🪙 You got **{result}**!")
 
-    # 📊 /status
-    @bot.tree.command(name="status", description="Check Lumi's status 📊")
+    @app_commands.command(name="status", description="Check Lumi's status 📊")
     async def status(interaction: discord.Interaction):
         latency = round(bot.latency * 1000)
         await interaction.response.send_message(
@@ -24,7 +23,7 @@ async def setup_slash_commands(bot: discord.Client):
             f"🧠 Model: LLaMA-3 (via Groq API)"
         )
 
- @app_commands.command(name="add_exception_role", description="Exclude a role from auto-moderation")
+    @app_commands.command(name="add_exception_role", description="Exclude a role from auto-moderation")
     @app_commands.describe(role="Role to exclude from moderation")
     async def add_exception(interaction: discord.Interaction, role: discord.Role):
         add_exception_role(interaction.guild_id, role.name)
@@ -38,7 +37,7 @@ async def setup_slash_commands(bot: discord.Client):
         else:
             await interaction.response.send_message("✅ No roles are currently exempted.")
 
-    # Register commands
+    # Register all commands
     bot.tree.add_command(roll)
     bot.tree.add_command(flip)
     bot.tree.add_command(status)
