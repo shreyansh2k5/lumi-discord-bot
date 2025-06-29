@@ -1,14 +1,10 @@
-# automod.py
+# Role exceptions per guild
+role_exceptions = {}
 
-# List of banned words (you can expand this)
-banned_words = {
-     "bitch", "asshole", "kill", "moron", "slut", "madarchod", "randi", "rape", "cp"
-}
+def is_role_exempt(guild_id: int, role_name: str) -> bool:
+    return role_name in role_exceptions.get(guild_id, set())
 
-def check_bad_words(message: str) -> bool:
-    """
-    Checks if the given message contains any banned words.
-    Returns True if any are found, else False.
-    """
-    content = message.lower()
-    return any(bad_word in content for bad_word in banned_words)
+def add_role_exception(guild_id: int, role_name: str):
+    if guild_id not in role_exceptions:
+        role_exceptions[guild_id] = set()
+    role_exceptions[guild_id].add(role_name)
