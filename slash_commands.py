@@ -1,8 +1,8 @@
 import random
 import discord
 from discord import app_commands
+from discord.app_commands import checks
 from automod import add_exception_role, get_exempt_roles
-from discord.app_commands import checks 
 
 async def setup_slash_commands(bot: discord.Client):
     @app_commands.command(name="roll", description="Roll a dice 🎲")
@@ -24,25 +24,24 @@ async def setup_slash_commands(bot: discord.Client):
             f"🧠 Model: LLaMA-3 (via Groq API)"
         )
 
-# ✅ Only users with "Manage Server" permission can run this
-@app_commands.command(name="add_exception_role", description="Exclude a role from auto-moderation")
-@checks.has_permissions(manage_guild=True)  # 👈 Permission check
-@app_commands.describe(role="Role to exclude from moderation")
-async def add_exception(interaction: discord.Interaction, role: discord.Role):
-    add_exception_role(interaction.guild_id, role.name)
-    await interaction.response.send_message(f"✅ `{role.name}` will now be excluded from moderation.", ephemeral=True)
+    # ✅ Only server admins can run these:
+    @app_commands.command(name="add_exception_role", description="Exclude a role from auto-moderation")
+    @checks.has_permissions(manage_guild=True)  # Permission check
+    @app_commands.describe(role="Role to exclude from moderation")
+    async def add_exception(interaction: discord.Interaction, role: discord.Role):
+        add_exception_role(interaction.guild_id, role.name)
+        await interaction.response.send_message(f"✅ `{role.name}` will now be excluded from moderation.", ephemeral=True)
 
-# ✅ Same protection for viewing exemptions
-@app_commands.command(name="view_exceptions", description="View currently excluded roles from moderation")
-@checks.has_permissions(manage_guild=True)  # 👈 Permission check
-async def view_exceptions(interaction: discord.Interaction):
-    roles = get_exempt_roles(interaction.guild_id)
-    if roles:
-        await interaction.response.send_message(f"🚫 Exempted roles: {', '.join(roles)}", ephemeral=True)
-    else:
-        await interaction.response.send_message("✅ No roles are currently exempted.", ephemeral=True)
+    @app_commands.command(name="view_exceptions", description="View currently excluded roles from moderation")
+    @checks.has_permissions(manage_guild=True)
+    async def view_exceptions(interaction: discord.Interaction):
+        roles = get_exempt_roles(interaction.guild_id)
+        if roles:
+            await interaction.response.send_message(f"🚫 Exempted roles: {', '.join(roles)}", ephemeral=True)
+        else:
+            await interaction.response.send_message("✅ No roles are currently exempted.", ephemeral=True)
 
-    # Register all commands
+    # ✅ Register all commands
     bot.tree.add_command(roll)
     bot.tree.add_command(flip)
     bot.tree.add_command(status)
