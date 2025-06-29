@@ -1,6 +1,6 @@
 # automod.py
 
-banned_words = {"badword1", "badword2", "idiot", "stupid"}  # Customize these
+banned_words = {"randi", "madarchod", "rape", "cp"}  # Customize these
 
 user_offenses = {}
 
