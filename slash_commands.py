@@ -24,7 +24,7 @@ async def setup_slash_commands(bot: discord.Client):
             f"🧠 Model: LLaMA-3 (via Groq API)"
         )
 
-  @app_commands.command(name="add_exception_role", description="Exclude a role from auto-moderation")
+ @app_commands.command(name="add_exception_role", description="Exclude a role from auto-moderation")
     @app_commands.describe(role="Role to exclude from moderation")
     async def add_exception(interaction: discord.Interaction, role: discord.Role):
         add_exception_role(interaction.guild_id, role.name)
@@ -38,7 +38,7 @@ async def setup_slash_commands(bot: discord.Client):
         else:
             await interaction.response.send_message("✅ No roles are currently exempted.")
 
-    # Register all commands
+    # Register commands
     bot.tree.add_command(roll)
     bot.tree.add_command(flip)
     bot.tree.add_command(status)
