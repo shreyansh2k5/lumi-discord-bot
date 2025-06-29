@@ -5,7 +5,7 @@ from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
-from automod import check_bad_words
+from automod import check_bad_words, has_restricted_role
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -19,14 +19,16 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # ✅ AutoMod: Check for bad words
-    if check_bad_words(message.content):
-        await message.delete()
-        await message.channel.send(
-            f"🚫 {message.author.mention}, that language isn’t allowed here! Please be respectful~ 🌸",
-            delete_after=5
-        )
-        return
+    # 🚨 Auto-moderation (only for users with specific roles)
+    restricted_roles = ["Member", "Unverified", "Newbie"]  # Change as per your server
+
+    if has_restricted_role(message.author, restricted_roles):
+        if check_bad_words(message.content):
+            await message.delete()
+            await message.channel.send(
+                f"⚠️ {message.author.mention}, please avoid using bad language!", delete_after=5
+            )
+            return
 
     user_input = message.content.strip()
     user_id = str(message.author.id)
