@@ -2,8 +2,7 @@
 
 # List of banned words (you can expand this)
 banned_words = {
-    "idiot", "stupid", "dumb", "shit", "fuck", "bitch", "asshole", "kill", "moron",
-    "retard", "slut", "bastard", "crap", "faggot"
+     "bitch", "asshole", "kill", "moron", "slut", "madarchod", "randi", "rape", "cp"
 }
 
 def check_bad_words(message: str) -> bool:
