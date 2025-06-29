@@ -23,6 +23,12 @@ def add_exception_role(guild_id: int, role_name: str):
     guild_exempt_roles[guild_id].add(role_name)
 
 
+# ✅ Remove a role from the exemption list for a guild
+def remove_exception_role(guild_id: int, role_name: str):
+    if guild_id in guild_exempt_roles:
+        guild_exempt_roles[guild_id].discard(role_name)
+
+
 # ✅ View all exempt roles for a guild
 def get_exempt_roles(guild_id: int):
     return list(guild_exempt_roles.get(guild_id, []))
