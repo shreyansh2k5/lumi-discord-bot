@@ -1,27 +1,47 @@
 # presence.py
 
 import discord
+import datetime # Import datetime for handling timestamps
 
 # Sets Lumi's rich presence (status)
 async def set_rich_presence(client: discord.Client):
-    # Replace with your actual Discord Application ID and Server Invite Link
-    YOUR_APPLICATION_ID = 123456789012345678 # Example ID
-    YOUR_SERVER_INVITE_URL = "https://discord.gg/UjzpCSHRgb" # Example Invite
+    # Your actual Discord Application ID
+    YOUR_APPLICATION_ID = 1387357109842350120
 
-    # Define buttons for the rich presence
-    buttons = [
-         discord.ui.Button(label="Join Our Server", style=discord.ButtonStyle.link, url=YOUR_SERVER_INVITE_URL)
-    ]
+    # --- Map fields from the C code to discord.py Activity parameters ---
 
-    # Create the activity with more details and buttons
+    # Timestamps (Unix timestamps to datetime objects)
+    # The timestamps in your C code seem to be the same, so the duration will be 0.
+    start_timestamp_unix = 1507665886
+    end_timestamp_unix = 1507665886 # If your actual end timestamp is different, adjust this
+
+    start_time = datetime.datetime.fromtimestamp(start_timestamp_unix)
+    end_time = datetime.datetime.fromtimestamp(end_timestamp_unix)
+
+    # Image Keys and Text (These are asset keys uploaded to Discord Developer Portal)
+    large_image_key = "wlppr7"       # Asset name from Discord Developer Portal -> Rich Presence -> Art Assets
+    large_image_text = "clinnin"     # Text shown when hovering over the large image
+    small_image_key = "sanchita_pfp" # Asset name from Discord Developer Portal -> Rich Presence -> Art Assets
+    small_image_text = "join"        # Text shown when hovering over the small image
+
+    # Create the Activity object with the mapped parameters
     activity = discord.Activity(
-        type=discord.ActivityType.watching, # Or PLAYING, STREAMING, etc.
-        name="💖 you ping me",
-        details="Chatting with homies!", # More descriptive text
-        state="Feeling cute today!",     # Even more personalized text
         application_id=YOUR_APPLICATION_ID,
-        "wlppr7", # Asset key from Discord Dev Portal
-        "sanchita_pfp", # Asset key from Discord Dev Portal
-        buttons=buttons # Attach the buttons here
+        type=discord.ActivityType.playing, # Setting type to 'playing' is common for rich presence with images
+        name="Custom Status", # This is the main line under "Playing a game" or "Watching a show"
+        details= "listening", # Corresponds to `discordPresence.details` ("listening")
+        state="chillin'",     # Corresponds to `discordPresence.state` ("chillin'")
+        timestamps={'start': start_time, 'end': end_time}, # Dictionary for start/end times
+        assets={
+            'large_image': large_image_key,
+            'large_text': large_image_text,
+            'small_image': small_image_key,
+            'small_text': small_image_text
+        }
+        # Removed 'party' and 'secrets' dictionaries as requested.
+        # If you want "Join Server" buttons in the future, you'll set them up
+        # directly in the Discord Developer Portal for your application,
+        # under Rich Presence -> Art Assets -> Rich Presence Display / External Links.
     )
+
     await client.change_presence(status=discord.Status.idle, activity=activity)
