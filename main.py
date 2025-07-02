@@ -6,6 +6,8 @@ from discord.ext.commands import Bot
 from bot_config import get_client
 from slash_commands import setup_slash_commands
 from keep_alive import keep_alive
+from mention_commands import setup_mention_commands # Import the new setup function
+
 
 # Optional presence
 try:
@@ -29,6 +31,14 @@ async def on_ready():
         print("🌐 Slash commands synced.")
     except Exception as e:
         print(f"[Slash Sync Error] {e}")
+
+    # ✅ Setup mention-based commands and moderation listeners
+    try:
+        setup_mention_commands(bot)
+        print("💬 Mention commands and moderation listeners set up.")
+    except Exception as e:
+        print(f"[Mention Commands Setup Error] {e}")
+
 
     # ✅ Optional rich presence
     if set_rich_presence:
