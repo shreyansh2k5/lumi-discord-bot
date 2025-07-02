@@ -6,7 +6,6 @@ from discord.ext.commands import Bot
 from bot_config import get_client
 from slash_commands import setup_slash_commands
 from keep_alive import keep_alive
-from mention_commands import setup_mention_commands
 
 
 # Optional presence
