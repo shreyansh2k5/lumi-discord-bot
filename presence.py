@@ -1,7 +1,7 @@
 # presence.py
 
 import discord
-import datetime # Import datetime for handling timestamps
+import datetime
 
 # Sets Lumi's rich presence (status)
 async def set_rich_presence(client: discord.Client):
@@ -24,12 +24,15 @@ async def set_rich_presence(client: discord.Client):
     small_image_key = "sanchita_pfp" # Asset name from Discord Developer Portal -> Rich Presence -> Art Assets
     small_image_text = "join"        # Text shown when hovering over the small image
 
+    # Re-introducing join_secret for the "Join Server" button
+    join_secret = "MTI4NzM0OjFpMmhuZToxMjMxMjM=" # From your C code, enables the "Join" button
+
     # Create the Activity object with the mapped parameters
     activity = discord.Activity(
         application_id=YOUR_APPLICATION_ID,
-        type=discord.ActivityType.playing, # Setting type to 'playing' is common for rich presence with images
+        type=discord.ActivityType.playing, # Setting type to 'playing' is common for rich presence with images and buttons
         name="Custom Status", # This is the main line under "Playing a game" or "Watching a show"
-        details= "listening", # Corresponds to `discordPresence.details` ("listening")
+        details="listening",  # Corresponds to `discordPresence.details` ("listening")
         state="chillin'",     # Corresponds to `discordPresence.state` ("chillin'")
         timestamps={'start': start_time, 'end': end_time}, # Dictionary for start/end times
         assets={
@@ -37,11 +40,11 @@ async def set_rich_presence(client: discord.Client):
             'large_text': large_image_text,
             'small_image': small_image_key,
             'small_text': small_image_text
+        },
+        secrets={
+            'join': join_secret # This is the key to making the "Join" button appear
         }
-        # Removed 'party' and 'secrets' dictionaries as requested.
-        # If you want "Join Server" buttons in the future, you'll set them up
-        # directly in the Discord Developer Portal for your application,
-        # under Rich Presence -> Art Assets -> Rich Presence Display / External Links.
+        # The 'party' dictionary for displaying party size has been omitted as per your request.
     )
 
     await client.change_presence(status=discord.Status.idle, activity=activity)
