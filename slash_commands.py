@@ -1,8 +1,13 @@
 import random
 import discord
 from discord import app_commands
-from automod import add_exception_role, get_exempt_roles, remove_exception_role
+from automod import (
+    add_exception_role, get_exempt_roles, remove_exception_role,
+    add_bad_word, remove_bad_word, get_bad_words # Keep these for badword commands
+)
 from discord.app_commands import checks
+# Removed imports related to /ask: groq_api, personality, memory_store
+
 
 async def setup_slash_commands(bot: discord.Client):
     @app_commands.command(name="roll", description="Roll a dice 🎲")
@@ -24,6 +29,7 @@ async def setup_slash_commands(bot: discord.Client):
             f"🧠 Model: LLaMA-3 (via Groq API)"
         )
 
+    # Auto-moderation exception roles commands
     @app_commands.command(name="add_exception_role", description="Exclude a role from auto-moderation")
     @checks.has_permissions(manage_guild=True)
     @app_commands.describe(role="Role to exclude from moderation")
@@ -59,10 +65,48 @@ async def setup_slash_commands(bot: discord.Client):
                 ephemeral=True
             )
 
-    # Register all commands
+    # --- Command Group: /badword ---
+    # This creates a group of subcommands like /badword add, /badword remove, /badword view
+    badword_group = app_commands.Group(name="badword", description="Manage auto-moderated words. 🚫")
+
+    @badword_group.command(name="add", description="Add a word to the auto-moderation list.")
+    @checks.has_permissions(manage_guild=True)
+    @app_commands.describe(word="The word to add.")
+    async def badword_add(interaction: discord.Interaction, word: str):
+        if add_bad_word(word):
+            await interaction.response.send_message(f"✅ Successfully added `{word}` to the bad word list.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"⚠️ `{word}` is already in the bad word list.", ephemeral=True)
+
+    @badword_group.command(name="remove", description="Remove a word from the auto-moderation list.")
+    @checks.has_permissions(manage_guild=True)
+    @app_commands.describe(word="The word to remove.")
+    async def badword_remove(interaction: discord.Interaction, word: str):
+        if remove_bad_word(word):
+            await interaction.response.send_message(f"🗑️ Successfully removed `{word}` from the bad word list.", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"⚠️ `{word}` was not found in the bad word list.", ephemeral=True)
+
+    @badword_group.command(name="view", description="View all words in the auto-moderation list.")
+    @checks.has_permissions(manage_guild=True)
+    async def badword_view(interaction: discord.Interaction):
+        words = get_bad_words()
+        if words:
+            await interaction.response.send_message(
+                f"🚫 Current bad words: {', '.join(words)}",
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                "✅ No bad words are currently set.",
+                ephemeral=True
+            )
+
+    # Register all commands and command groups to the bot's command tree
     bot.tree.add_command(roll)
     bot.tree.add_command(flip)
     bot.tree.add_command(status)
     bot.tree.add_command(add_exception)
     bot.tree.add_command(remove_exception)
     bot.tree.add_command(view_exceptions)
+    bot.tree.add_command(badword_group) # Register the badword command group
