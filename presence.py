@@ -6,7 +6,7 @@ import discord
 async def set_rich_presence(client: discord.Client):
     # Replace with your actual Discord Application ID and Server Invite Link
     YOUR_APPLICATION_ID = 123456789012345678 # Example ID
-    YOUR_SERVER_INVITE_URL = "https://discord.gg/your_invite_code" # Example Invite
+    YOUR_SERVER_INVITE_URL = "https://discord.gg/UjzpCSHRgb " # Example Invite
 
     # Define buttons for the rich presence
     buttons = [
