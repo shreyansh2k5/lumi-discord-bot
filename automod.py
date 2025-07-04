@@ -76,7 +76,7 @@ async def ensure_guild_settings_in_cache(guild_id: int):
     if guild_id not in _guild_settings_cache:
         await _load_guild_settings_from_firestore(guild_id)
 
-# 🚨 Bad word checker (now accepts guild_settings directly)
+# 🚨 Bad word checker (NOW A SYNCHRONOUS FUNCTION)
 def check_bad_words(message: str, guild_id: int, guild_settings: dict) -> bool:
     """Checks if the message contains any bad words for the specific guild, using provided settings."""
     message = message.lower()
@@ -136,7 +136,8 @@ async def remove_exception_role(guild_id: int, role_name: str, guild_settings: d
     print(f"DEBUG: '{role_name}' not found in guild {guild_id}'s exempt roles.")
     return False
 
-async def is_role_exempt(guild_id: int, role_name: str, guild_settings: dict) -> bool:
+# is_role_exempt (NOW A SYNCHRONOUS FUNCTION)
+def is_role_exempt(guild_id: int, role_name: str, guild_settings: dict) -> bool:
     """Checks if a role is exempt for a guild, using provided settings."""
     return role_name in guild_settings['exempt_roles']
 
