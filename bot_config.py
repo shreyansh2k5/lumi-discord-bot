@@ -5,8 +5,9 @@ from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
-# Import the functions that now rely on the internal cache
-from automod import check_bad_words, is_role_exempt, _ensure_guild_settings_in_cache # Import the new cache helper
+# Import only the public facing functions from automod
+from automod import check_bad_words, is_role_exempt
+# Removed: , _ensure_guild_settings_in_cache # This is an internal helper, not for direct import
 # Removed datetime and re imports as they are no longer needed for moderation features
 # import datetime
 # import re
@@ -38,18 +39,18 @@ async def on_message(message):
     if message.guild:  # only moderate in servers
         guild_id = message.guild.id
         
-        # CRITICAL OPTIMIZATION: Load guild settings into cache ONCE per message event
-        await _ensure_guild_settings_in_cache(guild_id)
+        # REMOVED: Direct call to _ensure_guild_settings_in_cache
+        # The functions below (is_role_exempt, check_bad_words) will call it internally.
 
         is_exempt = False
         for role in message.author.roles:
-            # Now, is_role_exempt will read from the cache
+            # is_role_exempt will internally call _ensure_guild_settings_in_cache
             if await is_role_exempt(guild_id, role.name):
                 is_exempt = True
                 break
         
         if not is_exempt: # Check if the user is NOT exempt
-            # Now, check_bad_words will read from the cache
+            # check_bad_words will internally call _ensure_guild_settings_in_cache
             if await check_bad_words(message.content, guild_id):
                 await message.delete()
                 await message.channel.send(
