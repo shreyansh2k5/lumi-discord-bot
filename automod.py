@@ -62,7 +62,7 @@ async def _save_guild_bad_words_to_firestore(guild_id: int, words: set[str]):
         await doc_ref.set(data_to_save, merge=True)
         print(f"DEBUG: Saved bad words for guild {guild_id}: {words}")
     except Exception as e:
-        print(f"ERROR: Error saving bad words for guild {guild_id}: {e}")
+        print(f"ERROR: Error saving bad words to Firestore for guild {guild_id}: {e}")
 
 async def add_bad_word(word: str, guild_id: int) -> bool:
     """Adds a word to the bad_words set for a specific guild in Firestore."""
