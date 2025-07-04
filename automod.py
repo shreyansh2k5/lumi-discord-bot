@@ -4,20 +4,20 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import json
 
-# Global Firestore client instance
-db = None
+# Global Firestore client instance (will be set by main.py)
+_firestore_db_instance = None
 
-def initialize_firestore(firestore_client):
-    """Initializes the Firestore client for this module."""
-    global db
-    db = firestore_client
-    print("Firestore client initialized in automod.py")
+def set_firestore_db(firestore_client):
+    """Sets the global Firestore client instance for this module."""
+    global _firestore_db_instance
+    _firestore_db_instance = firestore_client
+    print("Firestore client instance set in automod.py")
 
 # 🚨 Bad word checker (now requires guild_id)
 async def check_bad_words(message: str, guild_id: int) -> bool:
     """Checks if the message contains any bad words for the specific guild."""
-    if db is None:
-        print("DEBUG: Firestore DB not initialized in check_bad_words. Cannot check bad words.")
+    if _firestore_db_instance is None:
+        print("DEBUG: Firestore DB not set in check_bad_words. Cannot check bad words.")
         return False
 
     message = message.lower()
@@ -29,12 +29,12 @@ async def check_bad_words(message: str, guild_id: int) -> bool:
 
 async def _get_guild_bad_words_from_firestore(guild_id: int) -> set[str]:
     """Fetches bad words for a specific guild from Firestore."""
-    if db is None:
-        print("DEBUG: Firestore DB not initialized in _get_guild_bad_words_from_firestore. Cannot fetch guild bad words.")
+    if _firestore_db_instance is None:
+        print("DEBUG: Firestore DB not set in _get_guild_bad_words_from_firestore. Cannot fetch guild bad words.")
         return set()
 
     try:
-        doc_ref = db.collection('guilds').document(str(guild_id))
+        doc_ref = _firestore_db_instance.collection('guilds').document(str(guild_id))
         doc = await doc_ref.get()
         if doc.exists:
             data = doc.to_dict()
@@ -49,12 +49,12 @@ async def _get_guild_bad_words_from_firestore(guild_id: int) -> set[str]:
 
 async def _save_guild_bad_words_to_firestore(guild_id: int, words: set[str]):
     """Saves bad words for a specific guild to Firestore."""
-    if db is None:
-        print("DEBUG: Firestore DB not initialized in _save_guild_bad_words_to_firestore. Cannot save guild bad words.")
+    if _firestore_db_instance is None:
+        print("DEBUG: Firestore DB not set in _save_guild_bad_words_to_firestore. Cannot save guild bad words.")
         return
 
     try:
-        doc_ref = db.collection('guilds').document(str(guild_id))
+        doc_ref = _firestore_db_instance.collection('guilds').document(str(guild_id))
         data_to_save = {'bad_words': list(words)} # Convert set to list for Firestore
         await doc_ref.set(data_to_save, merge=True)
         print(f"DEBUG: Saved bad words for guild {guild_id}: {words}")
@@ -92,16 +92,15 @@ async def get_bad_words(guild_id: int) -> list[str]:
     return sorted(list(current_bad_words))
 
 # --- Functions for managing exception roles (Firestore-backed, per-guild) ---
-# These remain largely the same, but are included for completeness and context.
 
 async def _get_guild_exempt_roles_from_firestore(guild_id: int) -> set[str]:
     """Fetches exempt roles for a specific guild from Firestore."""
-    if db is None:
-        print("DEBUG: Firestore DB not initialized. Cannot fetch exempt roles.")
+    if _firestore_db_instance is None:
+        print("DEBUG: Firestore DB not set. Cannot fetch exempt roles.")
         return set()
 
     try:
-        doc_ref = db.collection('guilds').document(str(guild_id))
+        doc_ref = _firestore_db_instance.collection('guilds').document(str(guild_id))
         doc = await doc_ref.get()
         if doc.exists:
             data = doc.to_dict()
@@ -116,12 +115,12 @@ async def _get_guild_exempt_roles_from_firestore(guild_id: int) -> set[str]:
 
 async def _save_guild_exempt_roles_to_firestore(guild_id: int, roles: set[str]):
     """Saves exempt roles for a specific guild to Firestore."""
-    if db is None:
-        print("DEBUG: Firestore DB not initialized. Cannot save exempt roles.")
+    if _firestore_db_instance is None:
+        print("DEBUG: Firestore DB not set. Cannot save exempt roles.")
         return
 
     try:
-        doc_ref = db.collection('guilds').document(str(guild_id))
+        doc_ref = _firestore_db_instance.collection('guilds').document(str(guild_id))
         data_to_save = {'exempt_roles': list(roles)}
         await doc_ref.set(data_to_save, merge=True)
         print(f"DEBUG: Saved exempt roles for guild {guild_id}: {roles}")
