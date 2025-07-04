@@ -5,8 +5,10 @@ from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
-# Import the functions that now rely on the internal cache
-from automod import check_bad_words, is_role_exempt, ensure_guild_settings_in_cache # Import the new cache helper
+# CRITICAL FIX: Import the automod module itself
+import automod
+# Import specific functions from automod (these are called without 'automod.')
+from automod import check_bad_words, is_role_exempt, ensure_guild_settings_in_cache
 
 
 intents = discord.Intents.default()
@@ -37,6 +39,7 @@ async def on_message(message):
         # CRITICAL OPTIMIZATION: Load guild settings into cache ONCE per message event
         await ensure_guild_settings_in_cache(guild_id)
         # Get the cached settings for this guild
+        # Now 'automod' is defined because we imported it directly
         guild_settings = automod._guild_settings_cache.get(guild_id, {'bad_words': set(), 'exempt_roles': set()})
 
         is_exempt = False
