@@ -13,80 +13,81 @@ def initialize_firestore(firestore_client):
     db = firestore_client
     print("Firestore client initialized in automod.py")
 
-# --- Bad words (now stored in Firestore) ---
-# We'll fetch this from Firestore on startup and keep a local cache for quick checks
-_cached_bad_words = set()
+# --- NO MORE GLOBAL _cached_bad_words SET ---
+# Bad words will be fetched per guild when needed.
+# The initial _load_bad_words_from_firestore() call is also removed from main.py
+# as it's no longer global.
 
-async def _load_bad_words_from_firestore():
-    """Loads bad words from Firestore into a local cache."""
-    global _cached_bad_words
+# 🚨 Bad word checker (now requires guild_id)
+async def check_bad_words(message: str, guild_id: int) -> bool:
+    """Checks if the message contains any bad words for the specific guild."""
     if db is None:
-        print("Firestore DB not initialized in automod.py. Cannot load bad words.")
-        return
+        print("Firestore DB not initialized. Cannot check bad words.")
+        return False
+
+    message = message.lower()
+    guild_bad_words = await _get_guild_bad_words_from_firestore(guild_id)
+    return any(bad_word in message for bad_word in guild_bad_words)
+
+# --- Functions for managing bad words (Firestore-backed, per-guild) ---
+
+async def _get_guild_bad_words_from_firestore(guild_id: int) -> set[str]:
+    """Fetches bad words for a specific guild from Firestore."""
+    if db is None:
+        print("Firestore DB not initialized. Cannot fetch guild bad words.")
+        return set()
 
     try:
-        doc_ref = db.collection('global_settings').document('moderation')
+        doc_ref = db.collection('guilds').document(str(guild_id))
         doc = await doc_ref.get()
         if doc.exists:
             data = doc.to_dict()
-            _cached_bad_words = set(data.get('bad_words', []))
-            print(f"Loaded {len(_cached_bad_words)} bad words from Firestore.")
-        else:
-            print("No bad words document found in Firestore. Starting with empty list.")
-            _cached_bad_words = set()
+            return set(data.get('bad_words', []))
+        return set()
     except Exception as e:
-        print(f"Error loading bad words from Firestore: {e}")
-        _cached_bad_words = set() # Fallback to empty set on error
+        print(f"Error fetching bad words for guild {guild_id}: {e}")
+        return set()
 
-async def _save_bad_words_to_firestore():
-    """Saves the current bad words cache to Firestore."""
+async def _save_guild_bad_words_to_firestore(guild_id: int, words: set[str]):
+    """Saves bad words for a specific guild to Firestore."""
     if db is None:
-        print("Firestore DB not initialized in automod.py. Cannot save bad words.")
+        print("Firestore DB not initialized. Cannot save guild bad words.")
         return
 
     try:
-        doc_ref = db.collection('global_settings').document('moderation')
-        await doc_ref.set({'bad_words': list(_cached_bad_words)})
-        print(f"Saved {len(_cached_bad_words)} bad words to Firestore.")
+        doc_ref = db.collection('guilds').document(str(guild_id))
+        # Use merge=True to only update the 'bad_words' field without overwriting other fields
+        await doc_ref.set({'bad_words': list(words)}, merge=True)
     except Exception as e:
-        print(f"Error saving bad words to Firestore: {e}")
+        print(f"Error saving bad words for guild {guild_id}: {e}")
 
-# --- Exception Roles (now stored in Firestore per guild) ---
-
-# This will be fetched on demand or cached per guild as needed.
-# For simplicity, we'll fetch per guild when checking/modifying.
-
-# 🚨 Bad word checker
-def check_bad_words(message: str) -> bool:
-    """Checks if the message contains any cached bad words."""
-    message = message.lower()
-    return any(bad_word in message for bad_word in _cached_bad_words)
-
-# --- Functions for managing bad words (Firestore-backed) ---
-
-async def add_bad_word(word: str) -> bool:
-    """Adds a word to the global bad_words set in Firestore."""
+async def add_bad_word(word: str, guild_id: int) -> bool:
+    """Adds a word to the bad_words set for a specific guild in Firestore."""
     word = word.lower()
-    if word not in _cached_bad_words:
-        _cached_bad_words.add(word)
-        await _save_bad_words_to_firestore()
+    current_bad_words = await _get_guild_bad_words_from_firestore(guild_id)
+    if word not in current_bad_words:
+        current_bad_words.add(word)
+        await _save_guild_bad_words_to_firestore(guild_id, current_bad_words)
         return True
     return False
 
-async def remove_bad_word(word: str) -> bool:
-    """Removes a word from the global bad_words set in Firestore."""
+async def remove_bad_word(word: str, guild_id: int) -> bool:
+    """Removes a word from the bad_words set for a specific guild in Firestore."""
     word = word.lower()
-    if word in _cached_bad_words:
-        _cached_bad_words.remove(word)
-        await _save_bad_words_to_firestore()
+    current_bad_words = await _get_guild_bad_words_from_firestore(guild_id)
+    if word in current_bad_words:
+        current_bad_words.remove(word)
+        await _save_guild_bad_words_to_firestore(guild_id, current_bad_words)
         return True
     return False
 
-async def get_bad_words() -> list[str]:
-    """Returns a sorted list of all current bad words from cache."""
-    return sorted(list(_cached_bad_words))
+async def get_bad_words(guild_id: int) -> list[str]:
+    """Returns a sorted list of all current bad words for a specific guild from Firestore."""
+    current_bad_words = await _get_guild_bad_words_from_firestore(guild_id)
+    return sorted(list(current_bad_words))
 
-# --- Functions for managing exception roles (Firestore-backed) ---
+# --- Functions for managing exception roles (Firestore-backed, per-guild) ---
+# These remain largely the same, but are included for completeness and context.
 
 async def _get_guild_exempt_roles_from_firestore(guild_id: int) -> set[str]:
     """Fetches exempt roles for a specific guild from Firestore."""
@@ -113,7 +114,8 @@ async def _save_guild_exempt_roles_to_firestore(guild_id: int, roles: set[str]):
 
     try:
         doc_ref = db.collection('guilds').document(str(guild_id))
-        await doc_ref.set({'exempt_roles': list(roles)})
+        # Use merge=True to only update the 'exempt_roles' field without overwriting other fields
+        await doc_ref.set({'exempt_roles': list(roles)}, merge=True)
     except Exception as e:
         print(f"Error saving exempt roles for guild {guild_id}: {e}")
 
