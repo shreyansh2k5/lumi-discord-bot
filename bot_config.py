@@ -5,7 +5,6 @@ from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
-# Updated import for check_bad_words to reflect its new async nature and guild_id parameter
 from automod import check_bad_words, is_role_exempt
 import datetime
 import re
@@ -104,8 +103,9 @@ async def on_interaction(interaction: discord.Interaction):
             elif status == "cancel":
                 await interaction.response.send_message(f"✅ Moderation action cancelled.", ephemeral=False)
     
-    # IMPORTANT: Ensure this line is present to allow other interactions (like slash commands) to process
-    await bot.process_commands(interaction)
+    # --- REMOVE THIS LINE ---
+    # await bot.process_commands(interaction)
+    # ------------------------
 
 
 # --- Event Listener for Messages ---
@@ -127,7 +127,7 @@ async def on_message(message):
         
         user_roles = [role.name for role in message.author.roles]
         # Pass guild_id to check_bad_words
-        if not any(await is_role_exempt(guild_id, role_name) for role_name in user_roles):
+        if not any(await is_role_exempt(guild_id, role.name) for role in message.author.roles): # Corrected loop for is_role_exempt
             if await check_bad_words(message.content, guild_id): # Await and pass guild_id
                 await message.delete()
                 await message.channel.send(
