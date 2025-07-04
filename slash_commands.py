@@ -1,7 +1,7 @@
 import random
 import discord
 from discord import app_commands
-# Import the automod module itself, along with its functions
+# CRITICAL FIX: Import the automod module itself
 import automod
 from automod import (
     add_exception_role, get_exempt_roles, remove_exception_role,
