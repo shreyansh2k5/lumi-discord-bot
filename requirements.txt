@@ -4,3 +4,4 @@ requests
 aiohttp
 flask
 firebase-admin
+google-cloud-firestore
