@@ -15,8 +15,8 @@ from firebase_admin import credentials
 from google.cloud.firestore_v1.async_client import AsyncClient
 import json
 
-# Import google.auth for explicit credentials
-import google.auth
+# CRITICAL FIX: Import load_credentials_from_info from the correct module
+from google.oauth2 import service_account
 
 
 # Optional presence
@@ -53,9 +53,8 @@ try:
     if not project_id:
         raise ValueError("project_id not found in service account key JSON.")
 
-    # Create google-auth credentials from the service account info
-    # This is the standard way to create credentials for google-cloud-* libraries
-    auth_credentials, project = google.auth.load_credentials_from_info(service_account_info)
+    # CRITICAL FIX: Use service_account.Credentials.from_service_account_info
+    auth_credentials = service_account.Credentials.from_service_account_info(service_account_info)
 
     # Initialize the ASYNCHRONOUS Firestore client directly
     # Pass the project ID and the created credentials explicitly
