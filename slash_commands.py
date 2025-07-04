@@ -2,7 +2,6 @@ import random
 import discord
 from discord import app_commands
 from automod import (
-    # These functions are now async, so they need to be awaited
     add_exception_role, get_exempt_roles, remove_exception_role,
     add_bad_word, remove_bad_word, get_bad_words
 )
@@ -34,7 +33,6 @@ async def setup_slash_commands(bot: discord.Client):
     @checks.has_permissions(manage_guild=True)
     @app_commands.describe(role="Role to exclude from moderation")
     async def add_exception(interaction: discord.Interaction, role: discord.Role):
-        # Await the async function
         success = await add_exception_role(interaction.guild_id, role.name)
         if success:
             await interaction.response.send_message(
@@ -52,7 +50,6 @@ async def setup_slash_commands(bot: discord.Client):
     @checks.has_permissions(manage_guild=True)
     @app_commands.describe(role="Role to remove from exception list")
     async def remove_exception(interaction: discord.Interaction, role: discord.Role):
-        # Await the async function
         success = await remove_exception_role(interaction.guild_id, role.name)
         if success:
             await interaction.response.send_message(
@@ -69,7 +66,6 @@ async def setup_slash_commands(bot: discord.Client):
     @app_commands.command(name="view_exceptions", description="View excluded roles from moderation")
     @checks.has_permissions(manage_guild=True)
     async def view_exceptions(interaction: discord.Interaction):
-        # Await the async function
         roles = await get_exempt_roles(interaction.guild_id)
         if roles:
             await interaction.response.send_message(
@@ -89,35 +85,35 @@ async def setup_slash_commands(bot: discord.Client):
     @checks.has_permissions(manage_guild=True)
     @app_commands.describe(word="The word to add.")
     async def badword_add(interaction: discord.Interaction, word: str):
-        # Await the async function
-        if await add_bad_word(word):
-            await interaction.response.send_message(f"✅ Successfully added `{word}` to the bad word list.", ephemeral=True)
+        # Pass guild_id to add_bad_word
+        if await add_bad_word(word, interaction.guild_id):
+            await interaction.response.send_message(f"✅ Successfully added `{word}` to the bad word list for this guild.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"⚠️ `{word}` is already in the bad word list.", ephemeral=True)
+            await interaction.response.send_message(f"⚠️ `{word}` is already in this guild's bad word list.", ephemeral=True)
 
     @badword_group.command(name="remove", description="Remove a word from the auto-moderation list.")
     @checks.has_permissions(manage_guild=True)
     @app_commands.describe(word="The word to remove.")
     async def badword_remove(interaction: discord.Interaction, word: str):
-        # Await the async function
-        if await remove_bad_word(word):
-            await interaction.response.send_message(f"🗑️ Successfully removed `{word}` from the bad word list.", ephemeral=True)
+        # Pass guild_id to remove_bad_word
+        if await remove_bad_word(word, interaction.guild_id):
+            await interaction.response.send_message(f"🗑️ Successfully removed `{word}` from this guild's bad word list.", ephemeral=True)
         else:
-            await interaction.response.send_message(f"⚠️ `{word}` was not found in the bad word list.", ephemeral=True)
+            await interaction.response.send_message(f"⚠️ `{word}` was not found in this guild's bad word list.", ephemeral=True)
 
     @badword_group.command(name="view", description="View all words in the auto-moderation list.")
     @checks.has_permissions(manage_guild=True)
     async def badword_view(interaction: discord.Interaction):
-        # Await the async function
-        words = await get_bad_words()
+        # Pass guild_id to get_bad_words
+        words = await get_bad_words(interaction.guild_id)
         if words:
             await interaction.response.send_message(
-                f"🚫 Current bad words: {', '.join(words)}",
+                f"🚫 Current bad words for this guild: {', '.join(words)}",
                 ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                "✅ No bad words are currently set.",
+                "✅ No bad words are currently set for this guild.",
                 ephemeral=True
             )
 
