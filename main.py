@@ -6,16 +6,14 @@ from discord.ext.commands import Bot
 from bot_config import get_client
 from slash_commands import setup_slash_commands
 from keep_alive import keep_alive
-from automod import set_firestore_db # Use the new function to set the db instance
+from automod import set_firestore_db
 
 # Firebase Admin SDK imports
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials
+# Import the asynchronous Firestore client directly
+from google.cloud.firestore_v1.async_client import AsyncClient
 import json # Import json to parse the key from environment variable
-
-# Import the async Firestore client conversion
-from google.cloud.firestore_v1.client import Client as FirestoreClient
-from google.cloud.firestore_v1.async_client import AsyncClient as AsyncFirestoreClient
 
 
 # Optional presence
@@ -41,21 +39,19 @@ if not FIREBASE_SERVICE_ACCOUNT_KEY_JSON:
 try:
     # Parse the JSON string from the environment variable
     service_account_info = json.loads(FIREBASE_SERVICE_ACCOUNT_KEY_JSON)
+
+    # Initialize Firebase Admin SDK (still synchronous)
     cred = credentials.Certificate(service_account_info)
     firebase_admin.initialize_app(cred)
     print("✅ Firebase Admin SDK initialized from environment variable.")
 
-    # Get synchronous Firestore client
-    sync_db = firestore.client()
-    print("✅ Synchronous Firestore client obtained.")
-
-    # Convert to asynchronous client
-    # This is the key change for async operations
-    db = sync_db.to_async()
+    # Initialize the ASYNCHRONOUS Firestore client directly
+    # Pass the Firebase app instance to the AsyncClient
+    db = AsyncClient(client=firebase_admin.get_app())
     print("✅ Asynchronous Firestore client obtained.")
 
     # Pass the Async Firestore client to automod module
-    set_firestore_db(db) # Use the new setter function
+    set_firestore_db(db)
     print("✅ Asynchronous Firestore client passed to automod.py.")
 
 except json.JSONDecodeError as e:
