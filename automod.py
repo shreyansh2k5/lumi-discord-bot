@@ -21,6 +21,7 @@ async def check_bad_words(message: str, guild_id: int) -> bool:
         return False
 
     message = message.lower()
+    # Ensure this call is awaited
     guild_bad_words = await _get_guild_bad_words_from_firestore(guild_id)
     print(f"DEBUG: check_bad_words - Guild {guild_id} current bad words: {guild_bad_words}")
     return any(bad_word in message for bad_word in guild_bad_words)
@@ -35,6 +36,7 @@ async def _get_guild_bad_words_from_firestore(guild_id: int) -> set[str]:
 
     try:
         doc_ref = _firestore_db_instance.collection('guilds').document(str(guild_id))
+        # CRITICAL FIX: AWAIT THE GET OPERATION
         doc = await doc_ref.get()
         if doc.exists:
             data = doc.to_dict()
@@ -56,6 +58,7 @@ async def _save_guild_bad_words_to_firestore(guild_id: int, words: set[str]):
     try:
         doc_ref = _firestore_db_instance.collection('guilds').document(str(guild_id))
         data_to_save = {'bad_words': list(words)} # Convert set to list for Firestore
+        # Ensure this call is awaited
         await doc_ref.set(data_to_save, merge=True)
         print(f"DEBUG: Saved bad words for guild {guild_id}: {words}")
     except Exception as e:
@@ -101,6 +104,7 @@ async def _get_guild_exempt_roles_from_firestore(guild_id: int) -> set[str]:
 
     try:
         doc_ref = _firestore_db_instance.collection('guilds').document(str(guild_id))
+        # CRITICAL FIX: AWAIT THE GET OPERATION
         doc = await doc_ref.get()
         if doc.exists:
             data = doc.to_dict()
@@ -122,6 +126,7 @@ async def _save_guild_exempt_roles_to_firestore(guild_id: int, roles: set[str]):
     try:
         doc_ref = _firestore_db_instance.collection('guilds').document(str(guild_id))
         data_to_save = {'exempt_roles': list(roles)}
+        # Ensure this call is awaited
         await doc_ref.set(data_to_save, merge=True)
         print(f"DEBUG: Saved exempt roles for guild {guild_id}: {roles}")
     except Exception as e:
