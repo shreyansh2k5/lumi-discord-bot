@@ -3,7 +3,8 @@ import discord
 from discord import app_commands
 from automod import (
     add_exception_role, get_exempt_roles, remove_exception_role,
-    add_bad_word, remove_bad_word, get_bad_words
+    add_bad_word, remove_bad_word, get_bad_words,
+    ensure_guild_settings_in_cache # Import the cache helper
 )
 from discord.app_commands import checks
 
@@ -33,7 +34,9 @@ async def setup_slash_commands(bot: discord.Client):
     @checks.has_permissions(manage_guild=True)
     @app_commands.describe(role="Role to exclude from moderation")
     async def add_exception(interaction: discord.Interaction, role: discord.Role):
-        success = await add_exception_role(interaction.guild_id, role.name)
+        await ensure_guild_settings_in_cache(interaction.guild_id)
+        guild_settings = automod._guild_settings_cache.get(interaction.guild_id)
+        success = await add_exception_role(interaction.guild_id, role.name, guild_settings)
         if success:
             await interaction.response.send_message(
                 f"✅ `{role.name}` will now be excluded from moderation.",
@@ -50,7 +53,9 @@ async def setup_slash_commands(bot: discord.Client):
     @checks.has_permissions(manage_guild=True)
     @app_commands.describe(role="Role to remove from exception list")
     async def remove_exception(interaction: discord.Interaction, role: discord.Role):
-        success = await remove_exception_role(interaction.guild_id, role.name)
+        await ensure_guild_settings_in_cache(interaction.guild_id)
+        guild_settings = automod._guild_settings_cache.get(interaction.guild_id)
+        success = await remove_exception_role(interaction.guild_id, role.name, guild_settings)
         if success:
             await interaction.response.send_message(
                 f"🗑️ `{role.name}` removed from exception list.",
@@ -66,7 +71,9 @@ async def setup_slash_commands(bot: discord.Client):
     @app_commands.command(name="view_exceptions", description="View excluded roles from moderation")
     @checks.has_permissions(manage_guild=True)
     async def view_exceptions(interaction: discord.Interaction):
-        roles = await get_exempt_roles(interaction.guild_id)
+        await ensure_guild_settings_in_cache(interaction.guild_id)
+        guild_settings = automod._guild_settings_cache.get(interaction.guild_id)
+        roles = await get_exempt_roles(interaction.guild_id, guild_settings)
         if roles:
             await interaction.response.send_message(
                 f"🚫 Exempted roles: {', '.join(roles)}",
@@ -85,8 +92,9 @@ async def setup_slash_commands(bot: discord.Client):
     @checks.has_permissions(manage_guild=True)
     @app_commands.describe(word="The word to add.")
     async def badword_add(interaction: discord.Interaction, word: str):
-        # Pass guild_id to add_bad_word
-        if await add_bad_word(word, interaction.guild_id):
+        await ensure_guild_settings_in_cache(interaction.guild_id)
+        guild_settings = automod._guild_settings_cache.get(interaction.guild_id)
+        if await add_bad_word(word, interaction.guild_id, guild_settings):
             await interaction.response.send_message(f"✅ Successfully added `{word}` to the bad word list for this guild.", ephemeral=True)
         else:
             await interaction.response.send_message(f"⚠️ `{word}` is already in this guild's bad word list.", ephemeral=True)
@@ -95,8 +103,9 @@ async def setup_slash_commands(bot: discord.Client):
     @checks.has_permissions(manage_guild=True)
     @app_commands.describe(word="The word to remove.")
     async def badword_remove(interaction: discord.Interaction, word: str):
-        # Pass guild_id to remove_bad_word
-        if await remove_bad_word(word, interaction.guild_id):
+        await ensure_guild_settings_in_cache(interaction.guild_id)
+        guild_settings = automod._guild_settings_cache.get(interaction.guild_id)
+        if await remove_bad_word(word, interaction.guild_id, guild_settings):
             await interaction.response.send_message(f"🗑️ Successfully removed `{word}` from this guild's bad word list.", ephemeral=True)
         else:
             await interaction.response.send_message(f"⚠️ `{word}` was not found in this guild's bad word list.", ephemeral=True)
@@ -104,8 +113,9 @@ async def setup_slash_commands(bot: discord.Client):
     @badword_group.command(name="view", description="View all words in the auto-moderation list.")
     @checks.has_permissions(manage_guild=True)
     async def badword_view(interaction: discord.Interaction):
-        # Pass guild_id to get_bad_words
-        words = await get_bad_words(interaction.guild_id)
+        await ensure_guild_settings_in_cache(interaction.guild_id)
+        guild_settings = automod._guild_settings_cache.get(interaction.guild_id)
+        words = await get_bad_words(interaction.guild_id, guild_settings)
         if words:
             await interaction.response.send_message(
                 f"🚫 Current bad words for this guild: {', '.join(words)}",
