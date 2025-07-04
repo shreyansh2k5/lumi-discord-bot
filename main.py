@@ -13,7 +13,10 @@ import firebase_admin
 from firebase_admin import credentials
 # Import the asynchronous Firestore client directly
 from google.cloud.firestore_v1.async_client import AsyncClient
-import json # Import json to parse the key from environment variable
+import json
+
+# Import google.auth for explicit credentials
+import google.auth
 
 
 # Optional presence
@@ -45,11 +48,19 @@ try:
     firebase_admin.initialize_app(cred)
     print("✅ Firebase Admin SDK initialized from environment variable.")
 
+    # Extract project_id from service_account_info
+    project_id = service_account_info.get("project_id")
+    if not project_id:
+        raise ValueError("project_id not found in service account key JSON.")
+
+    # Create google-auth credentials from the service account info
+    # This is the standard way to create credentials for google-cloud-* libraries
+    auth_credentials, project = google.auth.load_credentials_from_info(service_account_info)
+
     # Initialize the ASYNCHRONOUS Firestore client directly
-    # CRITICAL FIX: Initialize AsyncClient without the 'client' argument,
-    # as it should infer the project from the already initialized firebase_admin app.
-    db = AsyncClient()
-    print("✅ Asynchronous Firestore client obtained.")
+    # Pass the project ID and the created credentials explicitly
+    db = AsyncClient(project=project_id, credentials=auth_credentials)
+    print("✅ Asynchronous Firestore client obtained with explicit credentials.")
 
     # Pass the Async Firestore client to automod module
     set_firestore_db(db)
