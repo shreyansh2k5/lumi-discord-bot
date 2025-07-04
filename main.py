@@ -6,8 +6,8 @@ from discord.ext.commands import Bot
 from bot_config import get_client
 from slash_commands import setup_slash_commands
 from keep_alive import keep_alive
-# Removed: from automod import _load_bad_words_from_firestore
-from automod import initialize_firestore # Keep this for Firestore client initialization
+# Changed: from automod import initialize_firestore, _load_bad_words_from_firestore
+from automod import set_firestore_db # Use the new function to set the db instance
 
 # Firebase Admin SDK imports
 import firebase_admin
@@ -45,8 +45,8 @@ try:
     db = firestore.client()
     print("✅ Firestore client obtained.")
 
-    # Initialize Firestore in automod module
-    initialize_firestore(db)
+    # Pass the Firestore client to automod module
+    set_firestore_db(db) # Use the new setter function
     print("✅ Firestore client passed to automod.py.")
 
 except json.JSONDecodeError as e:
@@ -62,7 +62,7 @@ except Exception as e:
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
 
-    # Removed: Load bad words from Firestore after bot is ready
+    # Removed: Load bad words from Firestore on_ready as it's now per-guild
     # try:
     #     await _load_bad_words_from_firestore()
     # except Exception as e:
