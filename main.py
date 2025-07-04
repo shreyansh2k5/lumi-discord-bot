@@ -6,7 +6,11 @@ from discord.ext.commands import Bot
 from bot_config import get_client
 from slash_commands import setup_slash_commands
 from keep_alive import keep_alive
+from automod import initialize_firestore, _load_bad_words_from_firestore # Import new automod functions
 
+# Firebase Admin SDK imports
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 # Optional presence
 try:
@@ -19,9 +23,41 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 bot: Bot = get_client()
 
+# --- Firebase Initialization ---
+# Path to your service account key file
+SERVICE_ACCOUNT_KEY_PATH = 'serviceAccountKey.json'
+
+try:
+    # Initialize Firebase Admin SDK
+    cred = credentials.Certificate(SERVICE_ACCOUNT_KEY_PATH)
+    firebase_admin.initialize_app(cred)
+    print("✅ Firebase Admin SDK initialized.")
+
+    # Get Firestore client
+    db = firestore.client()
+    print("✅ Firestore client obtained.")
+
+    # Initialize Firestore in automod module
+    initialize_firestore(db)
+    print("✅ Firestore client passed to automod.py.")
+
+    # Load initial bad words from Firestore
+    # This needs to be awaited, so we'll call it in on_ready where await is possible
+except Exception as e:
+    print(f"❌ Error initializing Firebase: {e}")
+    # Exit or handle gracefully if Firebase initialization fails
+    exit(1)
+
+
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
+
+    # Load bad words from Firestore after bot is ready
+    try:
+        await _load_bad_words_from_firestore()
+    except Exception as e:
+        print(f"[Bad Words Load Error] Could not load bad words on startup: {e}")
 
     # ✅ Setup and sync slash commands
     try:
@@ -30,14 +66,6 @@ async def on_ready():
         print("🌐 Slash commands synced.")
     except Exception as e:
         print(f"[Slash Sync Error] {e}")
-
-    # ✅ Setup mention-based commands and moderation listeners
-    try:
-        setup_mention_commands(bot)
-        print("💬 Mention commands and moderation listeners set up.")
-    except Exception as e:
-        print(f"[Mention Commands Setup Error] {e}")
-
 
     # ✅ Optional rich presence
     if set_rich_presence:
