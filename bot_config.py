@@ -5,7 +5,7 @@ from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
-from automod import check_bad_words, is_role_exempt # Ensure these are imported
+from automod import check_bad_words, is_role_exempt
 import datetime
 import re
 
@@ -15,100 +15,8 @@ intents.members = True # Required to access message.author.roles in guild messag
 
 bot = commands.Bot(command_prefix="/", intents=intents)
 
-# --- Event Listener for Button Interactions (for moderation confirmation) ---
-@bot.event
-async def on_interaction(interaction: discord.Interaction):
-    """
-    Handles interactions, specifically for moderation confirmation buttons.
-    It explicitly ignores other interaction types to prevent conflicts with bot.tree.
-    """
-    # CRITICAL FIX: Only process component interactions (buttons, select menus, etc.)
-    # If it's not a component interaction (e.g., it's a slash command),
-    # let bot.tree handle it and return immediately.
-    if interaction.type != discord.InteractionType.component:
-        return
-
-    # If it IS a component interaction, proceed with your custom logic
-    custom_id_parts = interaction.data.get("custom_id", "").split('_')
-    # Check if it's a moderation confirmation button interaction
-    if len(custom_id_parts) >= 5 and custom_id_parts[0] == "mod":
-        action_type = custom_id_parts[1] # e.g., "timeout", "kick", "ban"
-        status = custom_id_parts[2]       # "confirm" or "cancel"
-        target_id = int(custom_id_parts[3])
-        invoker_id = int(custom_id_parts[4])
-
-        guild = interaction.guild
-        if not guild:
-            await interaction.response.send_message("This action can only be performed in a server.", ephemeral=True)
-            return
-
-        # Ensure only the original invoker or an administrator can confirm/cancel
-        if interaction.user.id != invoker_id and not interaction.user.guild_permissions.moderate_members:
-            await interaction.response.send_message("❌ Only the original moderator or an administrator can confirm/cancel this action.", ephemeral=True)
-            return
-
-        target_member = guild.get_member(target_id)
-        invoker_member = guild.get_member(invoker_id)
-
-        # Prevent re-use of old buttons
-        # Edit the original message to remove the buttons after a choice is made
-        await interaction.message.edit(view=None)
-
-        if status == "confirm":
-            if not target_member:
-                await interaction.response.send_message(f"❌ User not found or left the server. Cannot complete action.", ephemeral=True)
-                return
-            
-            # Re-check permissions and hierarchy just in case roles changed between initial command and confirmation
-            bot_member = guild.me
-            if bot_member.top_role <= target_member.top_role:
-                await interaction.response.send_message(f"❌ Lumi cannot {action_type} {target_member.mention} because their role is higher than or equal to Lumi's highest role.", ephemeral=True)
-                return
-            if invoker_member and invoker_member.top_role <= target_member.top_role:
-                await interaction.response.send_message(f"❌ {invoker_member.mention}, you cannot {action_type} {target_member.mention} because their role is higher than or equal to your highest role.", ephemeral=True)
-                return
-            if target_member == guild.owner:
-                await interaction.response.send_message(f"❌ Lumi cannot {action_type} the server owner.")
-                return
-
-            reason = "Moderation action confirmed by staff via Lumi bot."
-            
-            try:
-                if action_type == "timeout":
-                    duration_str = "5 minutes" # Default if not found in embed
-                    # Attempt to parse duration from the embed's field
-                    for field in interaction.message.embeds[0].fields:
-                        if field.name == "Duration":
-                            duration_str = field.value
-                            break
-                    
-                    duration = datetime.timedelta(minutes=5) # Default
-                    match = re.match(r'(\d+)\s*(minute|hour|day|week)s?', duration_str, re.IGNORECASE)
-                    if match:
-                        value = int(match.group(1))
-                        unit = match.group(2).lower()
-                        if 'minute' in unit: duration = datetime.timedelta(minutes=value)
-                        elif 'hour' in unit: duration = datetime.timedelta(hours=value)
-                        elif 'day' in unit: duration = datetime.timedelta(days=value)
-                        elif 'week' in unit: duration = datetime.timedelta(weeks=value)
-
-                    await target_member.timeout(duration, reason=reason)
-                    await interaction.response.send_message(f"✅ {target_member.display_name} has been **{action_type}ed** for {duration_str} by {invoker_member.display_name}.", ephemeral=False)
-                elif action_type == "kick":
-                    await target_member.kick(reason=reason)
-                    await interaction.response.send_message(f"✅ {target_member.display_name} has been **{action_type}ed** by {invoker_member.display_name}.", ephemeral=False)
-                elif action_type == "ban":
-                    await target_member.ban(reason=reason)
-                    await interaction.response.send_message(f"✅ {target_member.display_name} has been **{action_type}ed** by {invoker_member.display_name}.", ephemeral=False)
-
-            except discord.Forbidden:
-                await interaction.response.send_message(f"❌ Lumi does not have permission to {action_type} {target_member.display_name}. Check Lumi's role hierarchy and permissions.", ephemeral=True)
-            except Exception as e:
-                print(f"[Moderation Error] {e}")
-                await interaction.response.send_message(f"An unexpected error occurred during moderation: {e}", ephemeral=True)
-
-        elif status == "cancel":
-            await interaction.response.send_message(f"✅ Moderation action cancelled.", ephemeral=False)
+# --- REMOVED: The entire on_interaction event listener ---
+# This will now be handled by discord.py's internal mechanisms and the View class.
 
 
 # --- Event Listener for Messages ---
@@ -128,8 +36,6 @@ async def on_message(message):
     if message.guild:  # only moderate in servers
         guild_id = message.guild.id
         
-        # CRITICAL FIX: Await the is_role_exempt call inside the any()
-        # This creates a list of booleans first, then checks if any are True
         is_exempt = False
         for role in message.author.roles:
             if await is_role_exempt(guild_id, role.name):
@@ -278,6 +184,7 @@ async def on_message(message):
                 view.add_item(confirm_button)
                 view.add_item(cancel_button)
 
+                # Send the message with the view, and the view will handle the interaction
                 await message.channel.send(embed=embed, view=view)
                 return # Stop further processing of this message to avoid AI chat
 
