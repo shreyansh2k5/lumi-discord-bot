@@ -5,7 +5,7 @@ from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
-# CRITICAL FIX: Import the automod module itself
+# Import the automod module itself
 import automod
 # Import specific functions from automod (these are called without 'automod.')
 from automod import check_bad_words, is_role_exempt, ensure_guild_settings_in_cache
@@ -39,19 +39,18 @@ async def on_message(message):
         # CRITICAL OPTIMIZATION: Load guild settings into cache ONCE per message event
         await ensure_guild_settings_in_cache(guild_id)
         # Get the cached settings for this guild
-        # Now 'automod' is defined because we imported it directly
         guild_settings = automod._guild_settings_cache.get(guild_id, {'bad_words': set(), 'exempt_roles': set()})
 
         is_exempt = False
         for role in message.author.roles:
-            # Pass the cached guild_settings directly
-            if is_role_exempt(guild_id, role.name, guild_settings): # No await here, it's now synchronous
+            # CRITICAL FIX: No await here, as is_role_exempt is now synchronous
+            if is_role_exempt(guild_id, role.name, guild_settings):
                 is_exempt = True
                 break
         
         if not is_exempt: # Check if the user is NOT exempt
-            # Pass the cached guild_settings directly
-            if check_bad_words(message.content, guild_id, guild_settings): # No await here, it's now synchronous
+            # CRITICAL FIX: No await here, as check_bad_words is now synchronous
+            if check_bad_words(message.content, guild_id, guild_settings):
                 await message.delete()
                 await message.channel.send(
                     f"⚠️ {message.author.mention}, please avoid using inappropriate language.",
