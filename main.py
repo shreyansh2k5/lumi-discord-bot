@@ -46,8 +46,9 @@ try:
     print("✅ Firebase Admin SDK initialized from environment variable.")
 
     # Initialize the ASYNCHRONOUS Firestore client directly
-    # Pass the Firebase app instance to the AsyncClient
-    db = AsyncClient(client=firebase_admin.get_app())
+    # CRITICAL FIX: Initialize AsyncClient without the 'client' argument,
+    # as it should infer the project from the already initialized firebase_admin app.
+    db = AsyncClient()
     print("✅ Asynchronous Firestore client obtained.")
 
     # Pass the Async Firestore client to automod module
