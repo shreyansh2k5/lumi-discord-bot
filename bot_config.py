@@ -5,9 +5,7 @@ from discord.ext import commands
 from groq_api import query_groq as query_model
 from personality import apply_personality
 from memory_store import get_memory, add_to_memory
-# Import the automod module itself
 import automod
-# Import specific functions from automod (these are called without 'automod.')
 from automod import check_bad_words, is_role_exempt, ensure_guild_settings_in_cache
 
 
@@ -32,8 +30,33 @@ async def on_message(message):
     if message.author == bot.user:
         return
 
-    # 🚨 Auto-moderation check (MUST come early)
-    if message.guild:  # only moderate in servers
+    # CRITICAL FIX: If the message is a Direct Message, skip guild-specific logic
+    if message.guild is None:
+        # This is a DM. Lumi can still respond to pings/mentions in DMs.
+        user_input = message.content.strip()
+        user_id = str(message.author.id)
+
+        if bot.user in message.mentions: # Only respond if Lumi is mentioned in a DM
+            async with message.channel.typing():
+                user_prompt = message.clean_content.replace(f"@{bot.user.name}", "").strip()
+                if not user_prompt:
+                    user_prompt = "Say something cute!"
+
+                memory = get_memory(user_id)
+                final_prompt = f"{memory}\nUser: {user_prompt}"
+                prompt = apply_personality(final_prompt)
+
+                response = await query_model(prompt)
+                add_to_memory(user_id, f"User: {user_prompt}")
+                add_to_memory(user_id, f"Lumi: {response}")
+
+                await message.channel.send(response)
+        return # Exit the function after handling DM or if not a mention
+
+
+    # 🚨 Auto-moderation check (MUST come early) - This block only runs in guilds now
+    # Ensure message.author is a discord.Member (should be true in guilds with SERVER MEMBERS INTENT)
+    if isinstance(message.author, discord.Member):
         guild_id = message.guild.id
         
         # CRITICAL OPTIMIZATION: Load guild settings into cache ONCE per message event
@@ -43,13 +66,13 @@ async def on_message(message):
 
         is_exempt = False
         for role in message.author.roles:
-            # CRITICAL FIX: No await here, as is_role_exempt is now synchronous
+            # No await here, as is_role_exempt is now synchronous
             if is_role_exempt(guild_id, role.name, guild_settings):
                 is_exempt = True
                 break
         
         if not is_exempt: # Check if the user is NOT exempt
-            # CRITICAL FIX: No await here, as check_bad_words is now synchronous
+            # No await here, as check_bad_words is now synchronous
             if check_bad_words(message.content, guild_id, guild_settings):
                 await message.delete()
                 await message.channel.send(
@@ -58,7 +81,7 @@ async def on_message(message):
                 )
                 return # Stop processing if a bad word is detected
                 
-    # ✅ Only extract user info if safe
+    # ✅ Only extract user info if safe (for guild messages not caught by automod)
     user_input = message.content.strip()
     user_id = str(message.author.id)
 
