@@ -20,3 +20,5 @@ All moderation settings are persistent across bot restarts, powered by Google Cl
 
 
 **Lumi is your smart, supportive, and ever-present bestie, ready to enhance your Discord community!**
+this is my invite link- https://discord.com/oauth2/authorize?client_id=1387357109842350120&permissions=8&integration_type=0&scope=bot+applications.commands
+
