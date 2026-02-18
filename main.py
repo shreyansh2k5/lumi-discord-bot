@@ -3,7 +3,7 @@
 from dotenv import load_dotenv
 import os
 from discord.ext.commands import Bot
-from bot_config import get_client
+from bot_config import get_client, revive_chat_loop
 from slash_commands import setup_slash_commands
 from keep_alive import keep_alive
 from automod import set_firestore_db
@@ -77,6 +77,10 @@ except Exception as e:
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user}")
+
+    if not revive_chat_loop.is_running():
+        revive_chat_loop.start()
+        print("💬 Chat revival loop started.")
 
     # ✅ Setup and sync slash commands
     try:
