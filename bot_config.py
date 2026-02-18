@@ -1,17 +1,17 @@
 # bot_config.py
 
 import discord
-from discord.ext import commands, tasks # Added tasks
-import time # Added time for the dead chat tracker
+from discord.ext import commands, tasks
+import time
 from groq_api import query_groq as query_model
-from personality import apply_personality
-from memory_store import get_memory, add_to_memory
+# REMOVED: apply_personality (Personality is now handled via System Prompt in groq_api)
 import automod
 from automod import check_bad_words, is_role_exempt, ensure_guild_settings_in_cache
+from memory_store import get_memory, add_to_memory
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True # Required to access message.author.roles and new members
+intents.members = True 
 
 bot = commands.Bot(command_prefix="/", intents=intents)
 
@@ -19,53 +19,31 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 last_message_time = time.time()
 last_active_channel = None
 
-
-# --- Event Listener for Messages ---
 @bot.event
 async def on_message(message):
     """
-    Handles incoming messages for auto-moderation and mention-based chat.
+    Handles incoming messages for auto-moderation and AI interaction.
     """
+    # 1. Allow commands to run
     await bot.process_commands(message)
 
+    # 2. Ignore the bot's own messages
     if message.author == bot.user:
         return
 
-    # --- Dead Chat Tracker Update ---
+    # 3. Dead Chat Tracker Update
     global last_message_time, last_active_channel
-    if message.guild: # Only track server channels, not DMs
+    if message.guild:
         last_message_time = time.time()
         last_active_channel = message.channel
 
-    # If the message is a Direct Message, skip guild-specific logic
-    if message.guild is None:
-        user_input = message.content.strip()
-        user_id = str(message.author.id)
-
-        if bot.user in message.mentions: 
-            async with message.channel.typing():
-                user_prompt = message.clean_content.replace(f"@{bot.user.name}", "").strip()
-                if not user_prompt:
-                    user_prompt = "Say something cute!"
-
-                memory = get_memory(user_id)
-                final_prompt = f"{memory}\nUser: {user_prompt}"
-                prompt = apply_personality(final_prompt)
-
-                response = await query_model(prompt)
-                add_to_memory(user_id, f"User: {user_prompt}")
-                add_to_memory(user_id, f"Lumi: {response}")
-
-                await message.reply(response) # Added reply here too!
-        return 
-
-    # 🚨 Auto-moderation check 
-    if isinstance(message.author, discord.Member):
+    # 4. 🚨 Auto-moderation check (only in guilds)
+    if message.guild and isinstance(message.author, discord.Member):
         guild_id = message.guild.id
-        
         await ensure_guild_settings_in_cache(guild_id)
         guild_settings = automod._guild_settings_cache.get(guild_id, {'bad_words': set(), 'exempt_roles': set()})
 
+        # Check if user has an exempt role
         is_exempt = False
         for role in message.author.roles:
             if is_role_exempt(guild_id, role.name, guild_settings):
@@ -74,54 +52,61 @@ async def on_message(message):
         
         if not is_exempt: 
             if check_bad_words(message.content, guild_id, guild_settings):
-                await message.delete()
-                await message.channel.send(
-                    f"⚠️ {message.author.mention}, please avoid using inappropriate language.",
-                    delete_after=5
-                )
+                try:
+                    await message.delete()
+                    await message.channel.send(
+                        f"⚠️ {message.author.mention}, please avoid using inappropriate language!",
+                        delete_after=5
+                    )
+                except discord.Forbidden:
+                    print(f"Missing permissions to delete message in {message.guild.name}")
                 return 
-                
-    # ✅ Only extract user info if safe 
-    user_input = message.content.strip()
-    user_id = str(message.author.id)
 
-    # ✅ If Lumi is mentioned directly 
-    if bot.user in message.mentions and not message.reference:
+    # 5. ✨ AI Response Logic (Mentions, Replies, or DMs)
+    is_dm = message.guild is None
+    is_mention = bot.user in message.mentions and not message.reference
+    is_reply_to_bot = False
+    
+    if message.reference:
+        try:
+            replied_msg = await message.channel.fetch_message(message.reference.message_id)
+            if replied_msg.author == bot.user:
+                is_reply_to_bot = True
+        except:
+            pass
+
+    if is_dm or is_mention or is_reply_to_bot:
         async with message.channel.typing():
-            user_prompt = message.clean_content.replace(f"@{bot.user.name}", "").strip()
-            if not user_prompt:
-                user_prompt = "Say something cute!"
+            user_id = str(message.author.id)
+            
+            # Clean up the input (remove the bot mention)
+            clean_input = message.clean_content.replace(f"@{bot.user.name}", "").strip()
+            if not clean_input:
+                clean_input = "Say something cute!"
 
+            # 🛠️ EMOJI VISION: Fetch server emojis to pass to the AI
+            emoji_str = ""
+            if message.guild:
+                # Get the first 20 custom emojis in string format
+                emoji_str = " ".join([str(e) for e in message.guild.emojis[:20]])
+
+            # Get Conversation Memory
             memory = get_memory(user_id)
-            final_prompt = f"{memory}\nUser: {user_prompt}"
-            prompt = apply_personality(final_prompt)
+            context_input = f"{memory}\nUser: {clean_input}"
 
-            response = await query_model(prompt)
-            add_to_memory(user_id, f"User: {user_prompt}")
+            # Query the model (groq_api handles the personality/system prompt)
+            response = await query_model(context_input, server_emojis=emoji_str)
+
+            # Update Memory
+            add_to_memory(user_id, f"User: {clean_input}")
             add_to_memory(user_id, f"Lumi: {response}")
 
+            # Send response
             await message.reply(response)
-
-    # ✅ If it's a reply to any message 
-    elif message.reference:
-        replied_msg = await message.channel.fetch_message(message.reference.message_id)
-        
-        if replied_msg.author == bot.user:
-            async with message.channel.typing():
-                memory = get_memory(user_id)
-                final_prompt = f"{memory}\nUser: {user_input}"
-                prompt = apply_personality(final_prompt)
-
-                response = await query_model(prompt)
-                add_to_memory(user_id, f"User: {user_input}")
-                add_to_memory(user_id, f"Lumi: {response}")
-
-                await message.reply(response)
 
 # --- Feature: Welcome New Members ---
 @bot.event
 async def on_member_join(member):
-    """Greets new members when they join the server."""
     if member.guild.system_channel:
         await member.guild.system_channel.send(
             f"Yay! Everyone say hi to {member.mention}! 💖 Welcome to the server, I'm Lumi, your AI bestie!"
@@ -135,14 +120,18 @@ async def revive_chat_loop():
         return
     
     # Check if chat has been dead for 2 hours (7200 seconds)
-    # Change to 3600 if you want her to speak after 1 hour!
     if time.time() - last_message_time > 7200:
         async with last_active_channel.typing():
-            prompt = apply_personality("The chat has been completely dead and silent for hours. Say something cute, random, or ask a fun question to spark a new conversation!")
-            response = await query_model(prompt)
+            # Let Lumi see the emojis even when reviving chat
+            emoji_str = ""
+            if last_active_channel.guild:
+                emoji_str = " ".join([str(e) for e in last_active_channel.guild.emojis[:15]])
+            
+            prompt = "The chat is dead. Spark a new conversation with something cute or a fun question!"
+            response = await query_model(prompt, server_emojis=emoji_str)
             await last_active_channel.send(response)
             
-        last_message_time = time.time() # Reset the timer
+        last_message_time = time.time() 
 
 def get_client():
     return bot
