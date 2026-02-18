@@ -4,17 +4,27 @@ import os
 import aiohttp
 from personality import get_temperature
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-MODEL_ID = "llama3-8b-8192"
+# Remove these global variables from the top
+# GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# HEADERS = ... 
 
-HEADERS = {
-    "Authorization": f"Bearer {GROQ_API_KEY}",
-    "Content-Type": "application/json"
-}
-
+MODEL_ID = "llama-3.3-70b-versatile"
 API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 async def query_groq(prompt: str) -> str:
+    # ✅ FIX: Load the key and headers INSIDE the function
+    # This ensures .env is fully loaded before we check for the key
+    api_key = os.getenv("GROQ_API_KEY")
+    
+    if not api_key:
+        print("[ERROR] GROQ_API_KEY not found in environment variables.")
+        return "⚠️ I lost my API key... please check my settings!"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
     body = {
         "model": MODEL_ID,
         "messages": [
@@ -39,12 +49,14 @@ async def query_groq(prompt: str) -> str:
 
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(API_URL, headers=HEADERS, json=body) as resp:
+            # Use the local 'headers' variable here
+            async with session.post(API_URL, headers=headers, json=body) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     message = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
                     if message:
-                        return message[:500]
+                        # You can increase this limit if you want longer replies
+                        return message[:800] 
                     else:
                         return "💬 Hmm... I didn’t quite catch that. Try again?"
                 else:
