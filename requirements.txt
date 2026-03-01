@@ -1,7 +1,0 @@
-discord.py
-python-dotenv
-requests
-aiohttp
-flask
-firebase-admin
-google-cloud-firestore>=2.0.0
