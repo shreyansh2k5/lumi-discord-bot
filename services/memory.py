@@ -1,23 +1,26 @@
 # services/memory.py
-# Short-term per-user conversation memory (in-process, cleared on restart).
-# To make memory persistent across restarts, swap this dict for Firestore reads/writes.
+# Per-user conversation memory stored as proper {"role", "content"} message dicts.
+# This format feeds directly into the Groq messages[] array.
 
-_memory: dict[str, list[str]] = {}
+_memory: dict[str, list[dict]] = {}
+
+MAX_HISTORY = 10  # number of turns (each turn = 1 user + 1 assistant message)
 
 
-def add_to_memory(user_id: str, message: str, max_messages: int = 10) -> None:
-    """Add a message to the user's memory, keeping only the last max_messages entries."""
+def add_to_memory(user_id: str, role: str, content: str) -> None:
+    """Add a single message to memory. role = 'user' or 'assistant'."""
     if user_id not in _memory:
         _memory[user_id] = []
-    _memory[user_id].append(message)
-    _memory[user_id] = _memory[user_id][-max_messages:]
+    _memory[user_id].append({"role": role, "content": content})
+    # Keep only last MAX_HISTORY * 2 entries (pairs of user + assistant)
+    _memory[user_id] = _memory[user_id][-(MAX_HISTORY * 2):]
 
 
-def get_memory(user_id: str) -> list[str]:
-    """Retrieve recent messages for a given user."""
-    return _memory.get(user_id, [])
+def get_memory(user_id: str) -> list[dict]:
+    """Return conversation history as a messages[] list."""
+    return list(_memory.get(user_id, []))
 
 
 def clear_memory(user_id: str) -> None:
-    """Wipe a user's memory (useful for testing or admin resets)."""
+    """Wipe a user's memory."""
     _memory.pop(user_id, None)
