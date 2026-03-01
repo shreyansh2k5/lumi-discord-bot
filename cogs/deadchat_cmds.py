@@ -51,18 +51,6 @@ class DeadChatCmds(commands.Cog):
             mentions.append(ch.mention if ch else f"~~`{cid}`~~ *(deleted)*")
         await interaction.followup.send("💬 Revival channels:\n" + "\n".join(f"• {m}" for m in mentions), ephemeral=True)
 
-    @deadchat_group.command(name="clear", description="Remove ALL dead chat channels")
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def clear_channels(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        await automod.ensure_guild_settings_in_cache(interaction.guild_id)
-        gs = automod._guild_settings_cache.get(interaction.guild_id)
-        if not gs.get("revive_channels"):
-            return await interaction.followup.send("ℹ️ No channels to clear.", ephemeral=True)
-        gs["revive_channels"] = set()
-        await automod._save_guild_settings_to_firestore(interaction.guild_id)
-        await interaction.followup.send("🗑️ Cleared all dead chat channels.", ephemeral=True)
-
 
     @deadchat_group.command(name="interval", description="Set how long chat must be dead before Lumi revives it ⏱️")
     @app_commands.checks.has_permissions(manage_guild=True)
