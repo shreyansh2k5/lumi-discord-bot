@@ -1,5 +1,6 @@
 # services/ai.py
-# Wrapper around the Groq API. Reuses a single aiohttp session for efficiency.
+# Wrapper around the Groq API.
+# Sends proper multi-turn message history so Lumi remembers the conversation.
 
 import os
 import aiohttp
@@ -10,7 +11,6 @@ from config import AI_MAX_TOKENS
 MODEL_ID = "llama-3.3-70b-versatile"
 API_URL  = "https://api.groq.com/openai/v1/chat/completions"
 
-# Single session reused across all requests (created on first call)
 _session: aiohttp.ClientSession | None = None
 
 
@@ -21,28 +21,42 @@ async def _get_session() -> aiohttp.ClientSession:
     return _session
 
 
-async def query_groq(prompt: str, server_emojis: str = "") -> str:
+async def query_groq(
+    messages: list[dict],
+    server_emojis: str = "",
+    server_name: str = "",
+    channel_name: str = "",
+    time_of_day: str = "",
+) -> str:
     """
-    Sends a prompt to the Groq API and returns Lumi's response.
-    Uses a persistent aiohttp session instead of creating a new one per call.
+    Sends a full conversation history to the Groq API.
+
+    `messages` is a list of {"role": "user"/"assistant", "content": "..."} dicts.
+    The system prompt is prepended automatically with all available context.
     """
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         print("[ERROR] GROQ_API_KEY not set.")
         return "⚠️ I lost my API key... please check my settings!"
 
+    system_prompt = get_system_prompt(
+        server_emojis=server_emojis,
+        server_name=server_name,
+        channel_name=channel_name,
+        time_of_day=time_of_day,
+    )
+
+    full_messages = [{"role": "system", "content": system_prompt}] + messages
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
     }
     body = {
-        "model": MODEL_ID,
-        "messages": [
-            {"role": "system", "content": get_system_prompt(server_emojis)},
-            {"role": "user",   "content": prompt},
-        ],
+        "model":       MODEL_ID,
+        "messages":    full_messages,
         "temperature": get_temperature(),
-        "max_tokens": AI_MAX_TOKENS,
+        "max_tokens":  AI_MAX_TOKENS,
     }
 
     try:
