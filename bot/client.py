@@ -66,10 +66,14 @@ async def revive_chat_loop():
                 continue
 
             emoji_str = " ".join(str(e) for e in guild.emojis[:15])
-            prompt = "The chat is dead. Spark a new conversation with something cute!"
+            messages = [{"role": "user", "content": "The chat has been dead for a while. Start a fun, cute conversation to get people talking again!"}]
 
             async with target_channel.typing():
-                response = await query_model(prompt, server_emojis=emoji_str)
+                response = await query_model(
+                    messages=messages,
+                    server_emojis=emoji_str,
+                    server_name=guild.name,
+                )
                 await target_channel.send(response)
 
             print(f"[DeadChat] Revived #{target_channel.name} in guild {guild.id}")
