@@ -1,5 +1,4 @@
 # bot/events.py
-# All discord.py event listeners.
 
 import time
 import datetime
@@ -10,10 +9,9 @@ from bot.client import bot, last_message_time
 import moderation.automod as automod
 from moderation.automod import check_bad_words, is_role_exempt, ensure_guild_settings_in_cache
 from services.ai import query_groq
-from services.memory import get_memory, add_to_memory, clear_memory
+from services.memory import get_memory, add_to_memory
 from config import AI_MAX_INPUT_CHARS
 
-# Usage hints for missing argument errors
 _USAGE_HINTS = {
     "flip":      "🪙 **Usage:** `$flip <amount>`\n**Example:** `$flip 500`",
     "roll":      "🎲 **Usage:** `$roll <amount>`\n**Example:** `$roll 1000`",
@@ -37,42 +35,55 @@ def _get_time_of_day() -> str:
     return "night"
 
 
-async def _fetch_recent_context(channel: discord.TextChannel, limit: int = 6) -> str:
+async def _fetch_recent_context(channel: discord.TextChannel, limit: int = 5) -> list[dict]:
     """
-    Fetches the last `limit` messages from the channel (excluding the bot's own)
-    and formats them as a readable chat log to give Lumi situational awareness.
+    Returns last `limit` non-bot messages as a list of
+    {"author_id": ..., "display_name": ..., "content": ...} dicts.
     """
     try:
-        recent = []
-        async for msg in channel.history(limit=limit + 1):
+        msgs = []
+        async for msg in channel.history(limit=limit + 2):
             if msg.author.bot:
                 continue
-            recent.append(f"{msg.author.display_name}: {msg.clean_content[:120]}")
-            if len(recent) >= limit:
+            msgs.append({
+                "author_id":    msg.author.id,
+                "display_name": msg.author.display_name,
+                "content":      msg.clean_content[:150],
+            })
+            if len(msgs) >= limit:
                 break
-        if not recent:
-            return ""
-        recent.reverse()
-        return "== RECENT CHAT ==\n" + "\n".join(recent)
+        msgs.reverse()
+        return msgs
     except Exception:
+        return []
+
+
+def _build_context_block(recent_msgs: list[dict], current_author_id: int, current_author_name: str) -> str:
+    """
+    Formats recent chat as a readable block.
+    Marks which messages are from the person currently talking to Lumi.
+    """
+    if not recent_msgs:
         return ""
+    lines = []
+    for m in recent_msgs:
+        tag = " (the person talking to you now)" if m["author_id"] == current_author_id else ""
+        lines.append(f"{m['display_name']}{tag}: {m['content']}")
+    return "== RECENT CHAT (for awareness only — answer the user's actual question) ==\n" + "\n".join(lines)
 
 
 @bot.event
 async def on_message(message: discord.Message):
-    # 1. Run prefix commands first
     await bot.process_commands(message)
 
-    # 2. Ignore the bot's own messages
     if message.author == bot.user:
         return
 
-    # 3. Update dead-chat timer
     global last_message_time
     if message.guild:
         last_message_time = time.time()
 
-    # 4. Auto-moderation
+    # ── Auto-moderation ──────────────────────────────────────────
     if message.guild and isinstance(message.author, discord.Member):
         guild_id = message.guild.id
         await ensure_guild_settings_in_cache(guild_id)
@@ -95,9 +106,9 @@ async def on_message(message: discord.Message):
                 pass
             return
 
-    # 5. Decide if Lumi should respond
-    is_dm          = message.guild is None
-    is_mention     = bot.user in message.mentions and not message.reference
+    # ── Decide if Lumi should respond ───────────────────────────
+    is_dm           = message.guild is None
+    is_mention      = bot.user in message.mentions and not message.reference
     is_reply_to_bot = False
 
     if message.reference:
@@ -113,32 +124,45 @@ async def on_message(message: discord.Message):
     if message.content.startswith("$"):
         return
 
-    # 6. Build context and respond
+    # ── Build and send AI response ───────────────────────────────
     async with message.channel.typing():
-        user_id     = str(message.author.id)
-        clean_input = message.clean_content.replace(f"@{bot.user.name}", "").strip()
-        clean_input = clean_input[:AI_MAX_INPUT_CHARS] or "Say something cute!"
+        user_id      = str(message.author.id)
+        # Strip the bot mention from the input so Lumi doesn't repeat it
+        clean_input  = message.clean_content
+        for mention in message.mentions:
+            if mention == bot.user:
+                clean_input = clean_input.replace(f"@{mention.display_name}", "").strip()
+        clean_input  = clean_input[:AI_MAX_INPUT_CHARS].strip() or "Hi!"
 
-        # Gather situational context
-        server_name  = message.guild.name  if message.guild  else "DM"
+        server_name  = message.guild.name   if message.guild else "DM"
         channel_name = message.channel.name if message.guild else "DM"
         time_of_day  = _get_time_of_day()
         emoji_str    = " ".join(str(e) for e in message.guild.emojis[:20]) if message.guild else ""
 
-        # Fetch recent channel messages for real-time awareness
-        recent_context = ""
-        if message.guild:
-            recent_context = await _fetch_recent_context(message.channel)
+        # Fetch recent chat for situational awareness
+        recent_msgs  = await _fetch_recent_context(message.channel) if message.guild else []
+        context_block = _build_context_block(recent_msgs, message.author.id, message.author.display_name)
 
-        # Build the full messages array: memory history + optional context + new user message
-        history = get_memory(user_id)
+        # Who is talking to Lumi right now (so she can mention them properly)
+        caller_note = (
+            f"== WHO IS TALKING TO YOU ==\n"
+            f"Name: {message.author.display_name}\n"
+            f"Discord mention: <@{message.author.id}>\n"
+            f"If you want to address them directly, use <@{message.author.id}> — "
+            f"this will ping them properly in Discord."
+        )
 
-        # Inject channel context as a system-style user note (not stored in memory)
-        user_content = clean_input
-        if recent_context:
-            user_content = f"{recent_context}\n\n== USER IS NOW TALKING TO YOU ==\n{clean_input}"
+        # Build the final user message: context + caller info + their actual question
+        parts = []
+        if context_block:
+            parts.append(context_block)
+        parts.append(caller_note)
+        parts.append(f"== THEIR MESSAGE ==\n{clean_input}")
+        full_user_content = "\n\n".join(parts)
 
-        messages = history + [{"role": "user", "content": user_content}]
+        # Get conversation history and append new message
+        history  = get_memory(user_id)
+        messages = history + [{"role": "user", "content": full_user_content}]
 
         response = await query_groq(
             messages=messages,
@@ -148,7 +172,7 @@ async def on_message(message: discord.Message):
             time_of_day=time_of_day,
         )
 
-        # Save clean input (without context dump) to memory
+        # Only store the clean input in memory (not the whole context block)
         add_to_memory(user_id, "user",      clean_input)
         add_to_memory(user_id, "assistant", response)
 
