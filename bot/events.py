@@ -1,20 +1,19 @@
 # bot/events.py
 # All discord.py event listeners.
-# Registered on the bot instance imported from bot/client.py.
 
+import time
+import datetime
 import discord
 from discord.ext import commands
 
 from bot.client import bot, last_message_time
 import moderation.automod as automod
 from moderation.automod import check_bad_words, is_role_exempt, ensure_guild_settings_in_cache
-from services.ai import query_groq as query_model
-from services.memory import get_memory, add_to_memory
+from services.ai import query_groq
+from services.memory import get_memory, add_to_memory, clear_memory
 from config import AI_MAX_INPUT_CHARS
 
-import time
-
-# Usage hints shown when a required argument is missing
+# Usage hints for missing argument errors
 _USAGE_HINTS = {
     "flip":      "🪙 **Usage:** `$flip <amount>`\n**Example:** `$flip 500`",
     "roll":      "🎲 **Usage:** `$roll <amount>`\n**Example:** `$roll 1000`",
@@ -23,16 +22,45 @@ _USAGE_HINTS = {
     "give":      "💸 **Usage:** `$give <@user> <amount>`\n**Example:** `$give @someone 500`",
     "balance":   "💰 **Usage:** `$balance` or `$balance <@user>`",
     "profile":   "🌸 **Usage:** `$profile` or `$profile <@user>`",
-    "mute":      "🤫 **Usage:** `$mute <@user> <minutes> [reason]`\n**Example:** `$mute @someone 10 spamming`",
-    "kick":      "🥾 **Usage:** `$kick <@user> [reason]`\n**Example:** `$kick @someone rule breaking`",
-    "ban":       "🔨 **Usage:** `$ban <@user> [reason]`\n**Example:** `$ban @someone harassment`",
+    "mute":      "🤫 **Usage:** `$mute <@user> <minutes> [reason]`",
+    "kick":      "🥾 **Usage:** `$kick <@user> [reason]`",
+    "ban":       "🔨 **Usage:** `$ban <@user> [reason]`",
     "shop buy":  "🐾 **Usage:** `$shop buy <pet>`\n**Example:** `$shop buy cat`",
 }
 
 
+def _get_time_of_day() -> str:
+    hour = datetime.datetime.now().hour
+    if 5  <= hour < 12: return "morning"
+    if 12 <= hour < 17: return "afternoon"
+    if 17 <= hour < 21: return "evening"
+    return "night"
+
+
+async def _fetch_recent_context(channel: discord.TextChannel, limit: int = 6) -> str:
+    """
+    Fetches the last `limit` messages from the channel (excluding the bot's own)
+    and formats them as a readable chat log to give Lumi situational awareness.
+    """
+    try:
+        recent = []
+        async for msg in channel.history(limit=limit + 1):
+            if msg.author.bot:
+                continue
+            recent.append(f"{msg.author.display_name}: {msg.clean_content[:120]}")
+            if len(recent) >= limit:
+                break
+        if not recent:
+            return ""
+        recent.reverse()
+        return "== RECENT CHAT ==\n" + "\n".join(recent)
+    except Exception:
+        return ""
+
+
 @bot.event
 async def on_message(message: discord.Message):
-    # 1. Let prefix / hybrid commands ($) run first
+    # 1. Run prefix commands first
     await bot.process_commands(message)
 
     # 2. Ignore the bot's own messages
@@ -50,14 +78,12 @@ async def on_message(message: discord.Message):
         await ensure_guild_settings_in_cache(guild_id)
         guild_settings = automod._guild_settings_cache.get(
             guild_id,
-            {'bad_words': set(), 'exempt_roles': set(), 'revive_channels': set()}
+            {"bad_words": set(), "exempt_roles": set(), "revive_channels": set()}
         )
-
         is_exempt = any(
             is_role_exempt(guild_id, role.name, guild_settings)
             for role in message.author.roles
         )
-
         if not is_exempt and check_bad_words(message.content, guild_id, guild_settings):
             try:
                 await message.delete()
@@ -69,9 +95,9 @@ async def on_message(message: discord.Message):
                 pass
             return
 
-    # 5. AI response (DM, @mention, or reply to bot)
-    is_dm = message.guild is None
-    is_mention = bot.user in message.mentions and not message.reference
+    # 5. Decide if Lumi should respond
+    is_dm          = message.guild is None
+    is_mention     = bot.user in message.mentions and not message.reference
     is_reply_to_bot = False
 
     if message.reference:
@@ -82,23 +108,51 @@ async def on_message(message: discord.Message):
         except Exception:
             pass
 
-    if (is_dm or is_mention or is_reply_to_bot) and not message.content.startswith("$"):
-        async with message.channel.typing():
-            user_id = str(message.author.id)
-            clean_input = message.clean_content.replace(f"@{bot.user.name}", "").strip()
-            clean_input = clean_input[:AI_MAX_INPUT_CHARS] or "Say something cute!"
+    if not (is_dm or is_mention or is_reply_to_bot):
+        return
+    if message.content.startswith("$"):
+        return
 
-            emoji_str = ""
-            if message.guild:
-                emoji_str = " ".join(str(e) for e in message.guild.emojis[:20])
+    # 6. Build context and respond
+    async with message.channel.typing():
+        user_id     = str(message.author.id)
+        clean_input = message.clean_content.replace(f"@{bot.user.name}", "").strip()
+        clean_input = clean_input[:AI_MAX_INPUT_CHARS] or "Say something cute!"
 
-            memory = get_memory(user_id)
-            context_input = f"{memory}\nUser: {clean_input}"
+        # Gather situational context
+        server_name  = message.guild.name  if message.guild  else "DM"
+        channel_name = message.channel.name if message.guild else "DM"
+        time_of_day  = _get_time_of_day()
+        emoji_str    = " ".join(str(e) for e in message.guild.emojis[:20]) if message.guild else ""
 
-            response = await query_model(context_input, server_emojis=emoji_str)
-            add_to_memory(user_id, f"User: {clean_input}")
-            add_to_memory(user_id, f"Lumi: {response}")
-            await message.reply(response)
+        # Fetch recent channel messages for real-time awareness
+        recent_context = ""
+        if message.guild:
+            recent_context = await _fetch_recent_context(message.channel)
+
+        # Build the full messages array: memory history + optional context + new user message
+        history = get_memory(user_id)
+
+        # Inject channel context as a system-style user note (not stored in memory)
+        user_content = clean_input
+        if recent_context:
+            user_content = f"{recent_context}\n\n== USER IS NOW TALKING TO YOU ==\n{clean_input}"
+
+        messages = history + [{"role": "user", "content": user_content}]
+
+        response = await query_groq(
+            messages=messages,
+            server_emojis=emoji_str,
+            server_name=server_name,
+            channel_name=channel_name,
+            time_of_day=time_of_day,
+        )
+
+        # Save clean input (without context dump) to memory
+        add_to_memory(user_id, "user",      clean_input)
+        add_to_memory(user_id, "assistant", response)
+
+        await message.reply(response)
 
 
 @bot.event
@@ -107,8 +161,8 @@ async def on_command_error(ctx: commands.Context, error):
         return
 
     if isinstance(error, commands.MissingRequiredArgument):
-        cmd  = ctx.command.qualified_name  # e.g. "shop buy" for subcommands
-        hint = _USAGE_HINTS.get(cmd, f"❓ Type `$help` to see how to use this command.")
+        cmd  = ctx.command.qualified_name
+        hint = _USAGE_HINTS.get(cmd, "❓ Type `$help` to see how to use this command.")
         return await ctx.send(
             f"⚠️ **Missing:** `{error.param.name}`\n\n{hint}",
             delete_after=15
@@ -117,13 +171,11 @@ async def on_command_error(ctx: commands.Context, error):
     if isinstance(error, commands.CommandOnCooldown):
         seconds = int(error.retry_after)
         hours, remainder = divmod(seconds, 3600)
-        minutes, secs = divmod(remainder, 60)
-
+        minutes, secs    = divmod(remainder, 60)
         parts = []
         if hours:   parts.append(f"{hours}h")
         if minutes: parts.append(f"{minutes}m")
         parts.append(f"{secs}s")
-
         return await ctx.send(
             f"⏳ **Lumi says:** Slow down! Wait `{''.join(parts)}` before using this again!",
             delete_after=10
@@ -131,7 +183,7 @@ async def on_command_error(ctx: commands.Context, error):
 
     if isinstance(error, commands.BadArgument):
         return await ctx.send(
-            f"❌ **Invalid argument.** Type `$help` to see the correct usage.",
+            "❌ **Invalid argument.** Type `$help` to see the correct usage.",
             delete_after=10
         )
 
@@ -143,5 +195,5 @@ async def on_member_join(member: discord.Member):
     if member.guild.system_channel:
         await member.guild.system_channel.send(
             f"Yay! Everyone say hi to {member.mention}! 💖 "
-            f"Welcome to the server — I'm Lumi, your AI bestie!"
+            f"Welcome to **{member.guild.name}** — I'm Lumi, your AI bestie! Type `$help` to see what I can do~ ✨"
         )
