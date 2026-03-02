@@ -18,7 +18,6 @@ os.chdir(ROOT)
 
 from bot.client import get_client, revive_chat_loop
 import bot.events  # registers on_message, on_command_error, on_member_join
-from core.keep_alive import keep_alive
 from services.database import init_firebase
 from config import COMMAND_PREFIX
 
@@ -37,7 +36,8 @@ bot = get_client()
 @bot.event
 async def on_ready():
     import time
-    bot.start_time = time.time()  # used by /status command
+    bot.start_time = time.time()        # used by /status command
+    bot.last_message_time = time.time()  # used by dead chat revival loop
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
 
     # ── Global slash-command error handler ──────────────────────
@@ -68,9 +68,11 @@ async def on_ready():
             except Exception as e:
                 print(f"  ❌ Failed to load cogs/{filename}: {e}")
 
-    # ── Sync slash commands ─────────────────────────────────────
-    await bot.tree.sync()
-    print("🌐 Command tree synced.")
+    # ── Sync slash commands (only on first ready, not reconnects) ──
+    if not getattr(bot, '_synced', False):
+        await bot.tree.sync()
+        bot._synced = True
+        print("🌐 Command tree synced.")
 
     # ── Start background loops ──────────────────────────────────
     if not revive_chat_loop.is_running():
@@ -84,5 +86,4 @@ async def on_ready():
             print(f"[Warning] Rich presence error: {e}")
 
 
-keep_alive()
 bot.run(os.getenv("DISCORD_TOKEN"))
