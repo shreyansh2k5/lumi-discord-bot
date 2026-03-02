@@ -142,13 +142,13 @@ async def on_message(message: discord.Message):
         recent_msgs  = await _fetch_recent_context(message.channel) if message.guild else []
         context_block = _build_context_block(recent_msgs, message.author.id, message.author.display_name)
 
-        # Who is talking to Lumi right now (so she can mention them properly)
+        # Who is talking to Lumi right now
         caller_note = (
             f"== WHO IS TALKING TO YOU ==\n"
             f"Name: {message.author.display_name}\n"
             f"Discord mention: <@{message.author.id}>\n"
-            f"If you want to address them directly, use <@{message.author.id}> — "
-            f"this will ping them properly in Discord."
+            f"Address them by name naturally in conversation. "
+            f"ONLY use <@{message.author.id}> if you are issuing a moderation warning — NOT in normal replies."
         )
 
         # Build the final user message: context + caller info + their actual question
