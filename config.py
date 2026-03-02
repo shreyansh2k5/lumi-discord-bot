@@ -5,8 +5,7 @@
 COMMAND_PREFIX = "$"
 
 # ── Dead Chat Reviver ────────────────────────────────────────────
-DEAD_CHAT_CHECK_INTERVAL_MINUTES = 30   # how often the loop runs
-DEAD_CHAT_THRESHOLD_SECONDS      = 7200 # 2 hours of silence triggers revival
+DEAD_CHAT_CHECK_INTERVAL_MINUTES = 60   # check once per hour (saves CPU vs every 30min)
 
 # ── AI ───────────────────────────────────────────────────────────
 AI_MAX_TOKENS     = 300
