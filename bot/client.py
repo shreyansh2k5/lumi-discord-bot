@@ -23,8 +23,6 @@ bot = commands.Bot(
     help_command=None,
 )
 
-# Tracks the last time any message was sent in any guild
-last_message_time = time.time()
 
 
 @tasks.loop(minutes=DEAD_CHAT_CHECK_INTERVAL_MINUTES)
@@ -41,7 +39,7 @@ async def revive_chat_loop():
 
             # Per-guild threshold — skip if chat is still active
             threshold_seconds = automod.get_revive_threshold(guild.id, guild_settings) * 60
-            if time.time() - last_message_time <= threshold_seconds:
+            if time.time() - getattr(bot, 'last_message_time', time.time()) <= threshold_seconds:
                 continue
 
             allowed_ids = automod.get_revive_channels(guild.id, guild_settings)
