@@ -215,8 +215,9 @@ async def on_command_error(ctx: commands.Context, error):
 
 @bot.event
 async def on_member_join(member: discord.Member):
-    if member.guild.system_channel:
-        await member.guild.system_channel.send(
+    ch = member.guild.system_channel
+    if ch and ch.permissions_for(member.guild.me).send_messages:
+        await ch.send(
             f"Yay! Everyone say hi to {member.mention}! 💖 "
             f"Welcome to **{member.guild.name}** — I'm Lumi, your AI bestie! Type `$help` to see what I can do~ ✨"
         )
