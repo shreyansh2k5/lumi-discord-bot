@@ -8,10 +8,26 @@ from pathlib import Path
 import yt_dlp
 
 # ── FFmpeg path ───────────────────────────────────────────────────
-# Looks for ffmpeg.exe next to main.py first, then falls back to PATH
 _ROOT = Path(__file__).parent.parent.resolve()
-_FFMPEG_LOCAL = _ROOT / "ffmpeg.exe"
-FFMPEG_EXECUTABLE = str(_FFMPEG_LOCAL) if _FFMPEG_LOCAL.exists() else "ffmpeg"
+
+def _find_ffmpeg() -> str:
+    import shutil
+    # 1. Next to main.py (local Windows dev)
+    local = _ROOT / "ffmpeg.exe"
+    if local.exists():
+        return str(local)
+    # 2. System PATH (Railway / Linux after nixpacks installs it)
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    # 3. Common nix store location on Railway
+    nix_path = "/nix/var/nix/profiles/default/bin/ffmpeg"
+    if os.path.exists(nix_path):
+        return nix_path
+    return "ffmpeg"  # last resort, will error clearly if missing
+
+FFMPEG_EXECUTABLE = _find_ffmpeg()
+print(f"[Music] FFmpeg: {FFMPEG_EXECUTABLE}")
 
 # yt-dlp options — audio only, no download, best quality
 YTDL_OPTIONS = {
