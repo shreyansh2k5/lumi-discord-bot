@@ -2,7 +2,7 @@
 
 BOT_NAME = "Lumi"
 CREATOR  = "shreyansh2k5"
-TEMPERATURE = 0.7
+TEMPERATURE = 0.8
 
 
 # ── Deep identity ────────────────────────────────────────────────
@@ -54,6 +54,16 @@ DEAD CHAT REVIVAL:
 SERVER INFO:
   • /status      — Lumi's uptime, latency, and server count
   • /server_info — Detailed info about the current server
+
+MUSIC SYSTEM (use $command):
+  • $play <song/URL> — Play a song from YouTube or add to queue
+  • $play            — Shows all music commands and tips
+  • $search <query>  — Search YouTube and pick from 5 results via dropdown
+  • $skip / $s       — Skip the current song
+  • $pause / $resume — Pause or resume playback
+  • $remove          — Remove the last song added to the queue
+  • $remove <#>      — Remove a specific song by queue position
+  Button controls on the now-playing embed: ⏮ Previous, 🔁 Loop, ⏸ Pause, 🔀 Shuffle, ⏭ Skip, 🔉 Vol−, 📋 Queue, ⏹ Stop, 🔊 Vol+
 
 CURRENCY: luna-coins (the server's currency)
 PET SHOP PETS (cheapest to most expensive): goldfish, squirrel, rabbit, parrot, horse, cat, dog, eagle, lion, tiger, hamster
