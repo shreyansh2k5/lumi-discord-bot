@@ -89,11 +89,12 @@ async def atomic_purchase(user_id: str, item_name: str, price: int) -> bool:
     @firestore.async_transactional
     async def _buy(tx, user_ref, item, cost):
         snap = await user_ref.get(transaction=tx)
-        if snap.get("coins") < cost:
+        data = snap.to_dict() or {}
+        if data.get("coins", 0) < cost:
             return False
         tx.update(user_ref, {
-            "coins": snap.get("coins") - cost,
-            "pets":  snap.get("pets", []) + [item],
+            "coins": data.get("coins", 0) - cost,
+            "pets":  data.get("pets", []) + [item],
         })
         return True
 
