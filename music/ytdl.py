@@ -47,9 +47,14 @@ FFMPEG_OPTIONS = {
 }
 
 
+def _is_youtube_url(query: str) -> bool:
+    return "youtube.com" in query or "youtu.be" in query or "music.youtube.com" in query
+
+
 def _extract_sync(query: str) -> dict | None:
     """Runs yt-dlp synchronously. Called via run_in_executor."""
-    with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+    opts = YTDL_OPTIONS
+    with yt_dlp.YoutubeDL(opts) as ydl:
         try:
             info = ydl.extract_info(query, download=False)
         except yt_dlp.utils.DownloadError:
