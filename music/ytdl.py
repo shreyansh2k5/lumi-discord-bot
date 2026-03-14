@@ -1,10 +1,11 @@
 # music/ytdl.py
+# Uses pytubefix (YouTube Innertube API) for stream URLs — no JS runtime needed.
+# Falls back to yt-dlp for anything pytubefix can't handle.
 
 import asyncio
 import os
 import shutil
 from pathlib import Path
-import yt_dlp
 
 # ── FFmpeg ────────────────────────────────────────────────────────
 _ROOT = Path(__file__).parent.parent.resolve()
@@ -29,65 +30,135 @@ FFMPEG_OPTIONS = {
     "options":        "-vn",
 }
 
-# ── Cookies ───────────────────────────────────────────────────────
-_COOKIES_FILE = _ROOT / "cookies.txt"
-if not _COOKIES_FILE.exists():
-    _alt = Path("/app/cookies.txt")
-    if _alt.exists():
-        _COOKIES_FILE = _alt
-_has_cookies = _COOKIES_FILE.exists()
-print(f"[Music] Cookies: {'✅ ' + str(_COOKIES_FILE) if _has_cookies else '❌ not found'}")
 
-# ── yt-dlp options ────────────────────────────────────────────────
-_COOKIE_OPTS = {"cookiefile": str(_COOKIES_FILE)} if _has_cookies else {}
+# ── pytubefix helpers ─────────────────────────────────────────────
 
-YTDL_OPTIONS = {
-    "format":            "bestaudio/best",
-    "noplaylist":        True,
-    "quiet":             True,
-    "no_warnings":       True,
-    "default_search":    "ytsearch",
-    "source_address":    "0.0.0.0",
-    "extract_flat":      False,
-    # ios client never needs JS signature solving
-    "extractor_args":    {"youtube": {"player_client": ["ios"]}},
-    **_COOKIE_OPTS,
-}
-
-YTDL_SEARCH = {**YTDL_OPTIONS, "extract_flat": True}
-
-
-def _extract_sync(query: str) -> dict | None:
-    with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
-        try:
-            info = ydl.extract_info(query, download=False)
-        except Exception as e:
-            print(f"[Music] yt-dlp error: {e}")
-            return None
-        if not info:
-            return None
-        if "entries" in info:
-            info = info["entries"][0]
-        if not info.get("url"):
+def _pytube_search_sync(query: str, limit: int = 5) -> list[dict]:
+    """Search YouTube via pytubefix Search."""
+    try:
+        from pytubefix import Search
+        s = Search(query)
+        results = []
+        for v in s.videos[:limit]:
             try:
-                info = ydl.extract_info(info.get("webpage_url") or info.get("id"), download=False)
-            except Exception as e:
-                print(f"[Music] re-extract error: {e}")
-                return None
-        print(f"[Music] Got track: {info.get('title')}")
-        return {
-            "title":       info.get("title",    "Unknown"),
-            "url":         info.get("url") or info.get("webpage_url"),
-            "webpage_url": info.get("webpage_url", ""),
-            "duration":    info.get("duration",  0),
-            "thumbnail":   info.get("thumbnail", ""),
-            "uploader":    info.get("uploader",  "Unknown"),
-        }
+                results.append({
+                    "title":       v.title,
+                    "webpage_url": v.watch_url,
+                    "video_id":    v.video_id,
+                    "duration":    v.length or 0,
+                    "uploader":    v.author or "Unknown",
+                    "thumbnail":   v.thumbnail_url or "",
+                })
+            except Exception:
+                continue
+        print(f"[Music] pytubefix search: {len(results)} results")
+        return results
+    except Exception as e:
+        print(f"[Music] pytubefix search error: {e}")
+        return []
 
+
+def _pytube_stream_sync(url_or_id: str) -> dict | None:
+    """Get direct audio stream URL via pytubefix."""
+    try:
+        from pytubefix import YouTube
+        # Accept video ID or full URL
+        if not url_or_id.startswith("http"):
+            url_or_id = f"https://www.youtube.com/watch?v={url_or_id}"
+        yt = YouTube(url_or_id, use_oauth=False, allow_oauth_cache=False)
+        # Get best audio-only stream
+        stream = (
+            yt.streams.filter(only_audio=True)
+              .order_by("abr")
+              .last()
+        )
+        if not stream:
+            print(f"[Music] pytubefix: no audio stream for {url_or_id}")
+            return None
+        print(f"[Music] pytubefix got stream: {yt.title} ({stream.abr})")
+        return {
+            "title":       yt.title,
+            "url":         stream.url,
+            "webpage_url": yt.watch_url,
+            "duration":    yt.length or 0,
+            "thumbnail":   yt.thumbnail_url or "",
+            "uploader":    yt.author or "Unknown",
+        }
+    except Exception as e:
+        print(f"[Music] pytubefix stream error: {e}")
+        return None
+
+
+def _ytdlp_fallback_sync(query: str) -> dict | None:
+    """yt-dlp fallback for when pytubefix fails."""
+    try:
+        import yt_dlp
+        _COOKIES_FILE = _ROOT / "cookies.txt"
+        if not _COOKIES_FILE.exists():
+            _alt = Path("/app/cookies.txt")
+            if _alt.exists():
+                _COOKIES_FILE = _alt
+        opts = {
+            "format":         "bestaudio/best",
+            "noplaylist":     True,
+            "quiet":          True,
+            "no_warnings":    True,
+            "default_search": "ytsearch",
+            "source_address": "0.0.0.0",
+            "extract_flat":   False,
+        }
+        if _COOKIES_FILE.exists():
+            opts["cookiefile"] = str(_COOKIES_FILE)
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(query, download=False)
+            if not info:
+                return None
+            if "entries" in info:
+                info = info["entries"][0]
+            print(f"[Music] yt-dlp fallback got: {info.get('title')}")
+            return {
+                "title":       info.get("title", "Unknown"),
+                "url":         info.get("url") or info.get("webpage_url"),
+                "webpage_url": info.get("webpage_url", ""),
+                "duration":    info.get("duration", 0),
+                "thumbnail":   info.get("thumbnail", ""),
+                "uploader":    info.get("uploader", "Unknown"),
+            }
+    except Exception as e:
+        print(f"[Music] yt-dlp fallback error: {e}")
+        return None
+
+
+# ── Public API ────────────────────────────────────────────────────
 
 async def fetch_track(query: str) -> dict | None:
+    """
+    Fetch a track by name or URL.
+    Tries pytubefix first, falls back to yt-dlp.
+    """
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _extract_sync, query)
+
+    # If it's a URL, go straight to stream
+    if query.startswith("http"):
+        result = await loop.run_in_executor(None, _pytube_stream_sync, query)
+        if result:
+            return result
+        return await loop.run_in_executor(None, _ytdlp_fallback_sync, query)
+
+    # Search query — find first result then get stream
+    results = await loop.run_in_executor(None, _pytube_search_sync, query, 1)
+    if results:
+        result = await loop.run_in_executor(None, _pytube_stream_sync, results[0]["webpage_url"])
+        if result:
+            return result
+
+    # Full fallback
+    return await loop.run_in_executor(None, _ytdlp_fallback_sync, query)
+
+
+async def search_tracks(query: str, limit: int = 5) -> list[dict]:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _pytube_search_sync, query, limit)
 
 
 def format_duration(seconds: int) -> str:
@@ -96,25 +167,3 @@ def format_duration(seconds: int) -> str:
     h, rem = divmod(int(seconds), 3600)
     m, s   = divmod(rem, 60)
     return f"{h}:{m:02}:{s:02}" if h else f"{m}:{s:02}"
-
-
-async def search_tracks(query: str, limit: int = 5) -> list[dict]:
-    def _search():
-        with yt_dlp.YoutubeDL(YTDL_SEARCH) as ydl:
-            try:
-                info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
-                results = []
-                for entry in info.get("entries", [])[:limit]:
-                    results.append({
-                        "title":       entry.get("title", "Unknown"),
-                        "webpage_url": entry.get("url") or entry.get("webpage_url", ""),
-                        "duration":    entry.get("duration", 0),
-                        "uploader":    entry.get("uploader", "Unknown"),
-                        "thumbnail":   entry.get("thumbnail", ""),
-                    })
-                return results
-            except Exception as e:
-                print(f"[Music] search error: {e}")
-                return []
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _search)
