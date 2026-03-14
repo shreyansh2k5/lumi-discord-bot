@@ -200,13 +200,16 @@ class Music(commands.Cog):
         asyncio.create_task(self._connect_lavalink())
 
     async def _connect_lavalink(self):
-        await asyncio.sleep(2)  # let bot fully start first
-        nodes = [wavelink.Node(uri=n["uri"], password=n["password"]) for n in LAVALINK_NODES]
-        try:
-            await wavelink.Pool.connect(nodes=nodes, client=self.bot, cache_capacity=100)
-            print(f"[Music] ✅ Lavalink connected")
-        except Exception as e:
-            print(f"[Music] ❌ Lavalink failed (music commands unavailable): {e}")
+        await asyncio.sleep(2)
+        for n in LAVALINK_NODES:
+            try:
+                node = wavelink.Node(uri=n["uri"], password=n["password"])
+                await wavelink.Pool.connect(nodes=[node], client=self.bot, cache_capacity=100)
+                print(f"[Music] ✅ Connected to {n['uri']}")
+                return
+            except Exception as e:
+                print(f"[Music] ❌ {n['uri']} failed: {e}")
+        print("[Music] ❌ All Lavalink nodes failed — music unavailable")
 
     @commands.Cog.listener()
     async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload):
