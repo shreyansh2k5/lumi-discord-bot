@@ -61,37 +61,48 @@ def format_duration(seconds: int) -> str:
 
 # ── YouTube via pytubefix (Innertube) ─────────────────────────────
 
+# Clients to try in order — ANDROID/IOS bypass bot detection on server IPs
+_YT_CLIENTS = ["ANDROID_VR", "IOS", "ANDROID", "MWEB"]
+
 def _yt_fetch_sync(query: str) -> dict | None:
     """Fetch a single YouTube track using pytubefix Innertube API."""
     from pytubefix import YouTube, Search
-    try:
-        # If it's a URL, use directly; otherwise search
-        if _is_youtube(query):
-            yt = YouTube(query, use_oauth=False, allow_oauth_cache=False)
-        else:
-            results = Search(query).videos
-            if not results:
-                return None
-            yt = results[0]
+    from pytubefix.exceptions import BotDetection, AgeRestrictedError
 
-        # Get best audio stream
-        stream = yt.streams.filter(only_audio=True).order_by("abr").last()
-        if not stream:
-            stream = yt.streams.get_audio_only()
-        if not stream:
-            return None
+    for client in _YT_CLIENTS:
+        try:
+            if _is_youtube(query):
+                yt = YouTube(query, client=client)
+            else:
+                results = Search(query, client=client).videos
+                if not results:
+                    continue
+                yt = results[0]
 
-        return {
-            "title":       yt.title,
-            "url":         stream.url,
-            "webpage_url": yt.watch_url,
-            "duration":    yt.length or 0,
-            "thumbnail":   yt.thumbnail_url or "",
-            "uploader":    yt.author or "Unknown",
-        }
-    except Exception as e:
-        print(f"[Music] pytubefix error: {e}")
-        return None
+            stream = yt.streams.filter(only_audio=True).order_by("abr").last()
+            if not stream:
+                stream = yt.streams.get_audio_only()
+            if not stream:
+                continue
+
+            print(f"[Music] Using client: {client}")
+            return {
+                "title":       yt.title,
+                "url":         stream.url,
+                "webpage_url": yt.watch_url,
+                "duration":    yt.length or 0,
+                "thumbnail":   yt.thumbnail_url or "",
+                "uploader":    yt.author or "Unknown",
+            }
+        except BotDetection:
+            print(f"[Music] {client} bot-detected, trying next...")
+            continue
+        except Exception as e:
+            print(f"[Music] {client} error: {e}")
+            continue
+
+    print("[Music] All clients failed")
+    return None
 
 
 def _yt_search_sync(query: str, limit: int) -> list[dict]:
