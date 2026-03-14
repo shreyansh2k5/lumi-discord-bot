@@ -1,10 +1,13 @@
 # music/ytdl.py
+# Uses Invidious API to get YouTube stream URLs — no signature solving needed.
+# Falls back to next instance if one is down.
 
 import asyncio
 import os
+import re
 import shutil
 from pathlib import Path
-import yt_dlp
+import aiohttp
 
 # ── FFmpeg path ───────────────────────────────────────────────────
 _ROOT = Path(__file__).parent.parent.resolve()
@@ -16,58 +19,12 @@ def _find_ffmpeg() -> str:
     found = shutil.which("ffmpeg")
     if found:
         return found
-    nix_path = "/nix/var/nix/profiles/default/bin/ffmpeg"
-    if os.path.exists(nix_path):
-        return nix_path
+    if os.path.exists("/usr/bin/ffmpeg"):
+        return "/usr/bin/ffmpeg"
     return "ffmpeg"
 
 FFMPEG_EXECUTABLE = _find_ffmpeg()
 print(f"[Music] FFmpeg: {FFMPEG_EXECUTABLE}")
-
-# ── Cookies ───────────────────────────────────────────────────────
-_COOKIES_FILE = _ROOT / "cookies.txt"
-_has_cookies  = _COOKIES_FILE.exists()
-if not _has_cookies:
-    _alt = Path("/app/cookies.txt")
-    if _alt.exists():
-        _COOKIES_FILE = _alt
-        _has_cookies  = True
-print(f"[Music] Cookies: {'✅ ' + str(_COOKIES_FILE) if _has_cookies else '❌ not found'}")
-
-# ── yt-dlp options ────────────────────────────────────────────────
-# android client is most reliable — no format restrictions, no bot check
-_COOKIE_OPTS = {"cookiefile": str(_COOKIES_FILE)} if _has_cookies else {}
-
-YTDL_OPTIONS = {
-    "format":         "bestaudio/best",
-    "noplaylist":     True,
-    "quiet":          True,
-    "no_warnings":    True,
-    "default_search": "ytsearch",
-    "source_address": "0.0.0.0",
-    "extract_flat":   False,
-    "extractor_args": {
-        "youtube": {
-            # tv_embedded doesn't require signature solving
-            "player_client": ["tv_embedded", "ios"],
-        }
-    },
-    **_COOKIE_OPTS,
-}
-
-YTDL_OPTIONS_SEARCH = {
-    "format":         "bestaudio",
-    "noplaylist":     True,
-    "quiet":          True,
-    "no_warnings":    True,
-    "default_search": "ytsearch",
-    "source_address": "0.0.0.0",
-    "extract_flat":   True,
-    "extractor_args": {
-        "youtube": {"player_client": ["android"]}
-    },
-    **_COOKIE_OPTS,
-}
 
 FFMPEG_OPTIONS = {
     "executable":     FFMPEG_EXECUTABLE,
@@ -75,38 +32,127 @@ FFMPEG_OPTIONS = {
     "options":        "-vn",
 }
 
+# ── Invidious instances (tried in order, first working one is used) ──
+INVIDIOUS_INSTANCES = [
+    "https://inv.nadeko.net",
+    "https://invidious.privacyredirect.com",
+    "https://invidious.nerdvpn.de",
+    "https://yt.cdaut.de",
+    "https://invidious.io.lol",
+]
 
-def _extract_sync(query: str) -> dict | None:
-    with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
-        try:
-            info = ydl.extract_info(query, download=False)
-        except Exception as e:
-            print(f"[Music] Extract error: {e}")
-            return None
-        if not info:
-            return None
-        if "entries" in info:
-            info = info["entries"][0]
-        # Re-extract full info if we only got a flat entry
-        if not info.get("url"):
+
+def _extract_video_id(url: str) -> str | None:
+    """Extracts YouTube video ID from a URL, or returns None if not a URL."""
+    patterns = [
+        r"(?:v=|youtu\.be/|youtube\.com/embed/)([a-zA-Z0-9_-]{11})",
+        r"youtube\.com/watch\?.*v=([a-zA-Z0-9_-]{11})",
+        r"music\.youtube\.com/watch\?.*v=([a-zA-Z0-9_-]{11})",
+    ]
+    for pat in patterns:
+        m = re.search(pat, url)
+        if m:
+            return m.group(1)
+    return None
+
+
+async def _search_invidious(query: str, limit: int = 5) -> list[dict]:
+    """Search YouTube via Invidious API."""
+    async with aiohttp.ClientSession() as session:
+        for instance in INVIDIOUS_INSTANCES:
             try:
-                info = ydl.extract_info(info.get("webpage_url") or info.get("id"), download=False)
+                url = f"{instance}/api/v1/search"
+                params = {"q": query, "type": "video", "fields": "title,videoId,lengthSeconds,author,videoThumbnails"}
+                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=8)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        results = []
+                        for item in data[:limit]:
+                            thumb = ""
+                            thumbs = item.get("videoThumbnails", [])
+                            if thumbs:
+                                thumb = thumbs[-1].get("url", "")
+                            results.append({
+                                "title":       item.get("title", "Unknown"),
+                                "webpage_url": f"https://www.youtube.com/watch?v={item['videoId']}",
+                                "video_id":    item["videoId"],
+                                "duration":    item.get("lengthSeconds", 0),
+                                "uploader":    item.get("author", "Unknown"),
+                                "thumbnail":   thumb,
+                            })
+                        return results
             except Exception as e:
-                print(f"[Music] Re-extract error: {e}")
-                return None
-        return {
-            "title":       info.get("title",    "Unknown Title"),
-            "url":         info.get("url") or info.get("webpage_url"),
-            "webpage_url": info.get("webpage_url", ""),
-            "duration":    info.get("duration",  0),
-            "thumbnail":   info.get("thumbnail", ""),
-            "uploader":    info.get("uploader",  "Unknown"),
-        }
+                print(f"[Music] Invidious search failed on {instance}: {e}")
+                continue
+    return []
+
+
+async def _get_stream_url(video_id: str) -> dict | None:
+    """Gets direct audio stream URL from Invidious for a video ID."""
+    async with aiohttp.ClientSession() as session:
+        for instance in INVIDIOUS_INSTANCES:
+            try:
+                url = f"{instance}/api/v1/videos/{video_id}"
+                params = {"fields": "title,lengthSeconds,author,videoThumbnails,adaptiveFormats,formatStreams"}
+                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    if resp.status != 200:
+                        continue
+                    data = await resp.json()
+
+                    # Try adaptiveFormats first (audio-only streams)
+                    best_audio = None
+                    best_bitrate = 0
+                    for fmt in data.get("adaptiveFormats", []):
+                        if fmt.get("type", "").startswith("audio/"):
+                            bitrate = fmt.get("bitrate", 0)
+                            if bitrate > best_bitrate:
+                                best_bitrate = bitrate
+                                best_audio = fmt.get("url")
+
+                    # Fall back to formatStreams (video+audio combined)
+                    if not best_audio:
+                        streams = data.get("formatStreams", [])
+                        if streams:
+                            best_audio = streams[0].get("url")
+
+                    if not best_audio:
+                        continue
+
+                    thumb = ""
+                    thumbs = data.get("videoThumbnails", [])
+                    if thumbs:
+                        thumb = thumbs[0].get("url", "")
+
+                    return {
+                        "title":       data.get("title", "Unknown"),
+                        "url":         best_audio,
+                        "webpage_url": f"https://www.youtube.com/watch?v={video_id}",
+                        "duration":    data.get("lengthSeconds", 0),
+                        "thumbnail":   thumb,
+                        "uploader":    data.get("author", "Unknown"),
+                    }
+            except Exception as e:
+                print(f"[Music] Invidious stream failed on {instance}: {e}")
+                continue
+    return None
 
 
 async def fetch_track(query: str) -> dict | None:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _extract_sync, query)
+    """
+    Main entry point. Accepts a YouTube URL or search text.
+    Returns a track dict with a direct stream URL.
+    """
+    # If it's a YouTube URL, extract the video ID directly
+    video_id = _extract_video_id(query)
+
+    if not video_id:
+        # It's a search query — find the first result
+        results = await _search_invidious(query, limit=1)
+        if not results:
+            return None
+        video_id = results[0]["video_id"]
+
+    return await _get_stream_url(video_id)
 
 
 def format_duration(seconds: int) -> str:
@@ -118,22 +164,5 @@ def format_duration(seconds: int) -> str:
 
 
 async def search_tracks(query: str, limit: int = 5) -> list[dict]:
-    def _search():
-        with yt_dlp.YoutubeDL(YTDL_OPTIONS_SEARCH) as ydl:
-            try:
-                info = ydl.extract_info(f"ytsearch{limit}:{query}", download=False)
-                results = []
-                for entry in info.get("entries", [])[:limit]:
-                    results.append({
-                        "title":       entry.get("title", "Unknown"),
-                        "webpage_url": entry.get("url") or entry.get("webpage_url", ""),
-                        "duration":    entry.get("duration", 0),
-                        "uploader":    entry.get("uploader", "Unknown"),
-                        "thumbnail":   entry.get("thumbnail", ""),
-                    })
-                return results
-            except Exception as e:
-                print(f"[Music] Search error: {e}")
-                return []
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _search)
+    """Returns up to `limit` search results for the dropdown."""
+    return await _search_invidious(query, limit)
