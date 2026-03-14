@@ -33,67 +33,47 @@ class Economy(commands.Cog):
     async def help_command(self, ctx: commands.Context):
         embed = discord.Embed(
             title="✨  Lumi — Command Guide",
-            description="Use `$command` or `/command` — both work!
-Admin-only commands are marked with 🔒",
+            description="Use `$command` or `/command` — both work!\nAdmin-only commands are marked with 🔒",
             color=PINK
         )
         embed.add_field(name="💰 Economy", value=(
-            "`daily` — Claim 5,000 coins every 24h
-"
-            "`beg` — Beg for random coins (5m cooldown)
-"
-            "`balance` — Check your wallet
-"
-            "`give <@user> <amt>` — Send coins to someone
-"
-            "`profile` — View your stats & pets
-"
+            "`daily` — Claim 5,000 coins every 24h\n"
+            "`beg` — Beg for random coins (5m cooldown)\n"
+            "`balance` — Check your wallet\n"
+            "`give <@user> <amt>` — Send coins to someone\n"
+            "`profile` — View your stats & pets\n"
             "`leaderboard` — Top 10 richest users"
         ), inline=False)
         embed.add_field(name="🎲 Games", value=(
-            "`blackjack <bet>` — Play 21 against Lumi
-"
-            "`flip <bet>` — 50/50 coin flip
-"
-            "`roll <bet>` — Roll a dice (6 = 6x jackpot!)
-"
+            "`blackjack <bet>` — Play 21 against Lumi\n"
+            "`flip <bet>` — 50/50 coin flip\n"
+            "`roll <bet>` — Roll a dice (6 = 6x jackpot!)\n"
             "`raid <@user>` — Steal up to 25% of their wallet"
         ), inline=False)
         embed.add_field(name="🛡️ Bank", value=(
-            "`bank_deposit` — Safe Mode: immune to raids for 24h
-"
+            "`bank_deposit` — Safe Mode: immune to raids for 24h\n"
             "`bank_withdraw` — Leave Safe Mode"
         ), inline=False)
         embed.add_field(name="🐾 Pet Shop", value=(
-            "`shop` — Browse available pets
-"
+            "`shop` — Browse available pets\n"
             "`shop buy <pet>` — Adopt a pet"
         ), inline=False)
         embed.add_field(name="🎵 Music", value=(
-            "`play <song/URL>` — Play from YouTube
-"
-            "`play` — Show all music commands
-"
-            "`search <query>` — Pick from 5 results
-"
-            "`skip` — Skip current song
-"
-            "`pause` / `resume` — Toggle pause
-"
+            "`play <song/URL>` — Play from YouTube\n"
+            "`play` — Show all music commands\n"
+            "`search <query>` — Pick from 5 results\n"
+            "`skip` — Skip current song\n"
+            "`pause` / `resume` — Toggle pause\n"
             "`remove` — Remove last queued song"
         ), inline=False)
         embed.add_field(name="ℹ️ Server", value=(
-            "`/status` — Lumi's uptime & latency
-"
+            "`/status` — Lumi's uptime & latency\n"
             "`/server_info` — Info about this server"
         ), inline=False)
         embed.add_field(name="🔒 Admin Only", value=(
-            "`/mute` `/unmute` `/kick` `/ban`
-"
-            "`/badword` — Manage word filter
-"
-            "`/deadchat` — Configure dead chat revival
-"
+            "`/mute` `/unmute` `/kick` `/ban`\n"
+            "`/badword` — Manage word filter\n"
+            "`/deadchat` — Configure dead chat revival\n"
             "`/exception` — Manage filter-exempt roles"
         ), inline=False)
         embed.set_footer(text="Tip: @mention or reply to Lumi to chat with her! 🌸")
