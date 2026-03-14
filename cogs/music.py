@@ -178,8 +178,7 @@ class SearchSelect(discord.ui.Select):
             await player.queue.put_wait(track)
             await self.cog._move_np(player, interaction.channel)
         else:
-            await player.queue.put_wait(track)
-            await player.play(player.queue.get())
+            await player.play(track)
             await self.cog._send_np(player, interaction.channel)
 
 
@@ -222,8 +221,7 @@ class Music(commands.Cog):
             return
         channel = getattr(player, "_text_channel", None)
         if not player.queue.is_empty:
-            track = player.queue.get()
-            await player.play(track)
+            await player.play(player.queue.get())
             if channel:
                 await self._move_np(player, channel)
         else:
@@ -302,8 +300,7 @@ class Music(commands.Cog):
             try: await msg.delete(delay=5)
             except Exception: pass
         else:
-            await player.queue.put_wait(track)
-            await player.play(player.queue.get())
+            await player.play(track)
             await self._send_np(player, ctx.channel)
 
     # ── $skip ─────────────────────────────────────────────────────
