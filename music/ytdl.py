@@ -41,11 +41,17 @@ _COOKIE_OPTS = {"cookiefile": str(_COOKIES_FILE)} if _has_cookies else {}
 YTDL_OPTIONS = {
     "format":         "bestaudio/best",
     "noplaylist":     True,
-    "quiet":          False,   # show full errors for debugging
-    "no_warnings":    False,
+    "quiet":          True,
+    "no_warnings":    True,
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
     "extract_flat":   False,
+    "extractor_args": {
+        "youtube": {
+            # ios client bypasses signature challenge — no JS needed
+            "player_client": ["ios", "android"],
+        }
+    },
     **_COOKIE_OPTS,
 }
 
