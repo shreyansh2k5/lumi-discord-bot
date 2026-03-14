@@ -1,9 +1,8 @@
 [build]
 builder = "nixpacks"
-buildCommand = "pip install -r requirements.txt"
 
 [build.nixpacksPlan.phases.setup]
-nixPkgs = ["ffmpeg", "libopus", "python312"]
+nixPkgs = ["ffmpeg", "libopus"]
 
 [deploy]
 startCommand = "python main.py"
