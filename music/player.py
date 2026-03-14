@@ -1,7 +1,16 @@
 # music/player.py
 import random
+import shutil
 from collections import deque
 import discord
+
+# Ensure static-ffmpeg is on PATH before anything else
+try:
+    import static_ffmpeg
+    static_ffmpeg.add_paths()
+except ImportError:
+    pass
+
 from music.ytdl import FFMPEG_OPTIONS
 
 class GuildPlayer:
