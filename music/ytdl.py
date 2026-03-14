@@ -48,8 +48,8 @@ YTDL_OPTIONS = {
     "extract_flat":   False,
     "extractor_args": {
         "youtube": {
-            # ios client bypasses signature challenge — no JS needed
-            "player_client": ["ios", "android"],
+            # tv_embedded doesn't require signature solving
+            "player_client": ["tv_embedded", "ios"],
         }
     },
     **_COOKIE_OPTS,
