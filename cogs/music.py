@@ -13,9 +13,9 @@ from core.embeds import PINK
 
 # ── Free public Lavalink v4 nodes (tried in order) ───────────────
 LAVALINK_NODES = [
-    {"uri": "https://lavalink.nextgencoders.xyz",  "password": "nextgencoderspvt"},
-    {"uri": "http://lavalinkv3.serenetia.com:80",  "password": "https://dsc.gg/ajidevserver"},
-    {"uri": "http://us1.lavalink.creavite.co:20080", "password": "auto.creavite.co"},
+    {"uri": "http://lavalink.nextgencoders.xyz:2333", "password": "nextgencoderspvt"},
+    {"uri": "http://us1.lavalink.creavite.co:20080",  "password": "auto.creavite.co"},
+    {"uri": "http://lavalinkv3.serenetia.com:80",     "password": "https://dsc.gg/ajidevserver"},
 ]
 
 
@@ -196,15 +196,17 @@ class Music(commands.Cog):
         self.bot = bot
 
     async def cog_load(self):
-        """Connect to Lavalink nodes when cog loads."""
-        nodes = []
-        for n in LAVALINK_NODES:
-            nodes.append(wavelink.Node(uri=n["uri"], password=n["password"]))
+        """Connect to Lavalink nodes in background — never blocks bot startup."""
+        asyncio.create_task(self._connect_lavalink())
+
+    async def _connect_lavalink(self):
+        await asyncio.sleep(2)  # let bot fully start first
+        nodes = [wavelink.Node(uri=n["uri"], password=n["password"]) for n in LAVALINK_NODES]
         try:
             await wavelink.Pool.connect(nodes=nodes, client=self.bot, cache_capacity=100)
-            print(f"[Music] ✅ Connected to Lavalink")
+            print(f"[Music] ✅ Lavalink connected")
         except Exception as e:
-            print(f"[Music] ❌ Lavalink connection failed: {e}")
+            print(f"[Music] ❌ Lavalink failed (music commands unavailable): {e}")
 
     @commands.Cog.listener()
     async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload):
@@ -264,6 +266,9 @@ class Music(commands.Cog):
             return await ctx.send(embed=discord.Embed(description="❌ Join a voice channel first!", color=discord.Color.red()), ephemeral=True)
 
         await ctx.typing()
+
+        if not wavelink.Pool.nodes:
+            return await ctx.send(embed=discord.Embed(description="❌ Music service unavailable — Lavalink not connected.", color=discord.Color.red()))
 
         tracks = await wavelink.Playable.search(query)
         if not tracks:
