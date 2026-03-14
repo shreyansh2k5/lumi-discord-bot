@@ -61,45 +61,42 @@ def format_duration(seconds: int) -> str:
 
 # ── YouTube via pytubefix (Innertube) ─────────────────────────────
 
-# Clients to try in order — ANDROID/IOS bypass bot detection on server IPs
-_YT_CLIENTS = ["ANDROID_VR", "IOS", "ANDROID", "MWEB"]
-
 def _yt_fetch_sync(query: str) -> dict | None:
-    """Fetch a single YouTube track using pytubefix Innertube API."""
-    from pytubefix import YouTube, Search
-    from pytubefix.exceptions import BotDetection, AgeRestrictedError
+    """Fetch YouTube audio using yt-dlp tv_embedded client — bypasses bot detection."""
+    import yt_dlp
 
-    for client in _YT_CLIENTS:
-        try:
-            if _is_youtube(query):
-                yt = YouTube(query, client=client)
-            else:
-                results = Search(query, client=client).videos
-                if not results:
+    # tv_embedded is the client used by YouTube TV/embedded players
+    # it doesn't require sign-in and works on server IPs
+    for client in ["tv_embedded", "tv", "web_embedded"]:
+        opts = {
+            "format":         "bestaudio/best",
+            "noplaylist":     True,
+            "quiet":          True,
+            "no_warnings":    True,
+            "default_search": "ytsearch",
+            "source_address": "0.0.0.0",
+            "extract_flat":   False,
+            "extractor_args": {"youtube": {"player_client": [client]}},
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            try:
+                info = ydl.extract_info(query, download=False)
+                if "entries" in info:
+                    info = info["entries"][0]
+                if not info.get("url"):
                     continue
-                yt = results[0]
-
-            stream = yt.streams.filter(only_audio=True).order_by("abr").last()
-            if not stream:
-                stream = yt.streams.get_audio_only()
-            if not stream:
+                print(f"[Music] ✅ Got stream via {client}")
+                return {
+                    "title":       info.get("title",       "Unknown"),
+                    "url":         info["url"],
+                    "webpage_url": info.get("webpage_url", ""),
+                    "duration":    info.get("duration",    0),
+                    "thumbnail":   info.get("thumbnail",   ""),
+                    "uploader":    info.get("uploader",    "Unknown"),
+                }
+            except Exception as e:
+                print(f"[Music] {client} failed: {e}")
                 continue
-
-            print(f"[Music] Using client: {client}")
-            return {
-                "title":       yt.title,
-                "url":         stream.url,
-                "webpage_url": yt.watch_url,
-                "duration":    yt.length or 0,
-                "thumbnail":   yt.thumbnail_url or "",
-                "uploader":    yt.author or "Unknown",
-            }
-        except BotDetection:
-            print(f"[Music] {client} bot-detected, trying next...")
-            continue
-        except Exception as e:
-            print(f"[Music] {client} error: {e}")
-            continue
 
     print("[Music] All clients failed")
     return None
@@ -165,16 +162,11 @@ def _ytdlp_fetch_sync(query: str) -> dict | None:
 # ── Public async API ──────────────────────────────────────────────
 
 async def fetch_track(query: str) -> dict | None:
-    """
-    Fetch a single track ready to stream.
-    Uses pytubefix for YouTube, yt-dlp for everything else.
-    """
+    """Fetch a single track. Uses tv_embedded yt-dlp for YouTube, fallback for others."""
     loop = asyncio.get_event_loop()
     if _is_youtube(query) or not query.startswith("http"):
-        # Text search or YouTube URL → use Innertube
         return await loop.run_in_executor(None, _yt_fetch_sync, query)
     else:
-        # Non-YouTube URL (SoundCloud etc) → use yt-dlp
         return await loop.run_in_executor(None, _ytdlp_fetch_sync, query)
 
 
