@@ -40,7 +40,7 @@ else:
 
 # ── yt-dlp options ────────────────────────────────────────────────
 YTDL_OPTIONS = {
-    "format":         "bestaudio/best",
+    "format":         "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
     "noplaylist":     True,
     "quiet":          True,
     "no_warnings":    True,
