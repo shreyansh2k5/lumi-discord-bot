@@ -171,9 +171,14 @@ class SearchSelect(discord.ui.Select):
         )
         if not interaction.user.voice:
             return await interaction.followup.send("Join a voice channel first!", ephemeral=True)
+        if not wavelink.Pool.nodes:
+            return await interaction.followup.send("❌ Music service unavailable — Lavalink not connected.", ephemeral=True)
         player: wavelink.Player = interaction.guild.voice_client  # type: ignore
         if not player:
-            player = await interaction.user.voice.channel.connect(cls=wavelink.Player)
+            try:
+                player = await interaction.user.voice.channel.connect(cls=wavelink.Player)
+            except Exception as e:
+                return await interaction.followup.send(f"❌ Could not connect to voice: {e}", ephemeral=True)
         if player.playing:
             await player.queue.put_wait(track)
             await self.cog._move_np(player, interaction.channel)
@@ -280,7 +285,10 @@ class Music(commands.Cog):
 
         player: wavelink.Player = ctx.guild.voice_client  # type: ignore
         if not player:
-            player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+            try:
+                player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+            except Exception as e:
+                return await ctx.send(embed=discord.Embed(description=f"❌ Could not connect to voice: {e}", color=discord.Color.red()))
         elif player.channel != ctx.author.voice.channel:
             await player.move_to(ctx.author.voice.channel)
 
