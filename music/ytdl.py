@@ -42,14 +42,15 @@ print(f"[Music] Cookies: {'✅ ' + str(_COOKIES_FILE) if _has_cookies else '❌ 
 _COOKIE_OPTS = {"cookiefile": str(_COOKIES_FILE)} if _has_cookies else {}
 
 YTDL_OPTIONS = {
-    "format":            "bestaudio[acodec!=none]/bestaudio/best[acodec!=none]/best",
+    "format":            "bestaudio/best",
     "noplaylist":        True,
-    "quiet":             False,
-    "no_warnings":       False,
-    "verbose":           True,
+    "quiet":             True,
+    "no_warnings":       True,
     "default_search":    "ytsearch",
     "source_address":    "0.0.0.0",
     "extract_flat":      False,
+    # ios client never needs JS signature solving
+    "extractor_args":    {"youtube": {"player_client": ["ios"]}},
     **_COOKIE_OPTS,
 }
 
