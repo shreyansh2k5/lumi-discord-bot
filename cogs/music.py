@@ -13,9 +13,9 @@ from core.embeds import PINK
 
 # ── Free public Lavalink v4 nodes (tried in order) ───────────────
 LAVALINK_NODES = [
-    {"uri": "http://lavalink.nextgencoders.xyz:2333", "password": "nextgencoderspvt"},
-    {"uri": "http://us1.lavalink.creavite.co:20080",  "password": "auto.creavite.co"},
-    {"uri": "http://lavalinkv3.serenetia.com:80",     "password": "https://dsc.gg/ajidevserver"},
+    {"uri": "http://lavalink.jirayu.net:13592",    "password": "youshallnotpass"},
+    {"uri": "http://lavalinkv4.serenetia.com:80",  "password": "https://seretia.link/discord"},
+    {"uri": "http://lava.g3v.co.uk:9008",          "password": "lavalinklol"},
 ]
 
 
