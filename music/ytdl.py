@@ -27,31 +27,47 @@ print(f"[Music] FFmpeg: {FFMPEG_EXECUTABLE}")
 # ── Cookies ───────────────────────────────────────────────────────
 _COOKIES_FILE = _ROOT / "cookies.txt"
 _has_cookies  = _COOKIES_FILE.exists()
-print(f"[Music] Looking for cookies at: {_COOKIES_FILE}")
-if _has_cookies:
-    print(f"[Music] ✅ cookies.txt found!")
-else:
-    print(f"[Music] ❌ cookies.txt NOT found — YouTube may block requests")
+if not _has_cookies:
     _alt = Path("/app/cookies.txt")
     if _alt.exists():
         _COOKIES_FILE = _alt
         _has_cookies  = True
-        print(f"[Music] ✅ Found at fallback: {_alt}")
+print(f"[Music] Cookies: {'✅ ' + str(_COOKIES_FILE) if _has_cookies else '❌ not found'}")
 
 # ── yt-dlp options ────────────────────────────────────────────────
+# android client is most reliable — no format restrictions, no bot check
+_COOKIE_OPTS = {"cookiefile": str(_COOKIES_FILE)} if _has_cookies else {}
+
 YTDL_OPTIONS = {
-    "format":         "bestaudio/best",
+    "format":         "bestaudio",
     "noplaylist":     True,
     "quiet":          True,
     "no_warnings":    True,
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
     "extract_flat":   False,
-    "extractor_args": {"youtube": {"player_client": ["web"]}},
-    **( {"cookiefile": str(_COOKIES_FILE)} if _has_cookies else {} ),
+    "extractor_args": {
+        "youtube": {
+            "player_client": ["android"],
+            "player_skip":   ["webpage", "configs"],
+        }
+    },
+    **_COOKIE_OPTS,
 }
 
-YTDL_OPTIONS_SEARCH = {**YTDL_OPTIONS, "extract_flat": True}
+YTDL_OPTIONS_SEARCH = {
+    "format":         "bestaudio",
+    "noplaylist":     True,
+    "quiet":          True,
+    "no_warnings":    True,
+    "default_search": "ytsearch",
+    "source_address": "0.0.0.0",
+    "extract_flat":   True,
+    "extractor_args": {
+        "youtube": {"player_client": ["android"]}
+    },
+    **_COOKIE_OPTS,
+}
 
 FFMPEG_OPTIONS = {
     "executable":     FFMPEG_EXECUTABLE,
@@ -64,10 +80,20 @@ def _extract_sync(query: str) -> dict | None:
     with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
         try:
             info = ydl.extract_info(query, download=False)
-        except yt_dlp.utils.DownloadError:
+        except Exception as e:
+            print(f"[Music] Extract error: {e}")
+            return None
+        if not info:
             return None
         if "entries" in info:
             info = info["entries"][0]
+        # Re-extract full info if we only got a flat entry
+        if not info.get("url"):
+            try:
+                info = ydl.extract_info(info.get("webpage_url") or info.get("id"), download=False)
+            except Exception as e:
+                print(f"[Music] Re-extract error: {e}")
+                return None
         return {
             "title":       info.get("title",    "Unknown Title"),
             "url":         info.get("url") or info.get("webpage_url"),
@@ -106,7 +132,8 @@ async def search_tracks(query: str, limit: int = 5) -> list[dict]:
                         "thumbnail":   entry.get("thumbnail", ""),
                     })
                 return results
-            except Exception:
+            except Exception as e:
+                print(f"[Music] Search error: {e}")
                 return []
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _search)
