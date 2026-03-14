@@ -5,6 +5,3 @@ firebase-admin
 google-cloud-firestore>=2.0.0
 yt-dlp
 PyNaCl
-pycryptodomex
-brotli
-websockets
