@@ -6,7 +6,7 @@ import random
 from collections import deque
 import discord
 
-from music.ytdl import FFMPEG_OPTIONS
+from music.ytdl import FFMPEG_OPTIONS, refresh_track_url
 
 
 class GuildPlayer:
@@ -23,7 +23,7 @@ class GuildPlayer:
 
     # ── Playback ─────────────────────────────────────────────────
 
-    def play_next(self, after_callback=None, after=None):
+    async def play_next(self, after_callback=None, after=None):
         """
         Plays the next track in the queue.
         If loop is on, re-queues the current track before popping.
@@ -38,14 +38,15 @@ class GuildPlayer:
 
         if self.shuffle and len(self.queue) > 1:
             idx  = random.randrange(len(self.queue))
-            track = list(self.queue)[idx]
-            del list(self.queue)[idx]          # remove by index
             new_q = list(self.queue)
-            new_q.pop(idx)
+            track = new_q.pop(idx)
             self.queue = deque(new_q)
             self.current = track
         else:
             self.current = self.queue.popleft()
+
+        # Refresh stream URL right before playing — pytubefix URLs expire
+        self.current = await refresh_track_url(self.current)
 
         source = discord.FFmpegPCMAudio(self.current["url"], **FFMPEG_OPTIONS)
         source = discord.PCMVolumeTransformer(source, volume=self.volume)
