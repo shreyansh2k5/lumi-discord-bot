@@ -24,7 +24,6 @@ def build_now_playing_embed(player: GuildPlayer) -> discord.Embed:
     )
     embed.add_field(name="⏱ Duration",  value=format_duration(track["duration"]), inline=True)
     embed.add_field(name="👤 Requester", value=track.get("requester", "Unknown"),  inline=True)
-    embed.add_field(name="🔊 Volume",    value=f"{player.volume_percent}%",         inline=True)
 
     status_parts = []
     if player.loop:    status_parts.append("🔁 Loop")
@@ -51,7 +50,7 @@ class MusicControlView(discord.ui.View):
     def _get_player(self) -> GuildPlayer | None:
         return get_player(self.guild_id)
 
-    async def _refresh(self, interaction: discord.Interaction):
+    async def _update_embed(self, interaction: discord.Interaction):
         player = self._get_player()
         if player and player.current:
             embed = build_now_playing_embed(player)
@@ -80,7 +79,7 @@ class MusicControlView(discord.ui.View):
             return await interaction.response.send_message("Nothing is playing!", ephemeral=True)
         player.loop = not player.loop
         button.style = discord.ButtonStyle.success if player.loop else discord.ButtonStyle.secondary
-        await self._refresh(interaction)
+        await self._update_embed(interaction)
 
     @discord.ui.button(emoji="⏸", style=discord.ButtonStyle.primary, row=0)
     async def btn_pause(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -90,7 +89,7 @@ class MusicControlView(discord.ui.View):
         paused = player.toggle_pause()
         button.emoji = discord.PartialEmoji(name="▶" if paused else "⏸")
         button.style = discord.ButtonStyle.secondary if paused else discord.ButtonStyle.primary
-        await self._refresh(interaction)
+        await self._update_embed(interaction)
 
     @discord.ui.button(emoji="🔀", style=discord.ButtonStyle.secondary, row=0)
     async def btn_shuffle(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -99,7 +98,7 @@ class MusicControlView(discord.ui.View):
             return await interaction.response.send_message("Nothing is playing!", ephemeral=True)
         player.shuffle = not player.shuffle
         button.style = discord.ButtonStyle.success if player.shuffle else discord.ButtonStyle.secondary
-        await self._refresh(interaction)
+        await self._update_embed(interaction)
 
     @discord.ui.button(emoji="⏭", style=discord.ButtonStyle.secondary, row=0)
     async def btn_skip(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -110,14 +109,6 @@ class MusicControlView(discord.ui.View):
         await interaction.response.defer()
 
     # Row 2
-    @discord.ui.button(emoji="🔉", style=discord.ButtonStyle.secondary, row=1)
-    async def btn_vol_down(self, interaction: discord.Interaction, button: discord.ui.Button):
-        player = self._get_player()
-        if not player:
-            return await interaction.response.send_message("Nothing is playing!", ephemeral=True)
-        player.set_volume(-0.1)
-        await self._refresh(interaction)
-
     @discord.ui.button(emoji="📋", style=discord.ButtonStyle.secondary, row=1)
     async def btn_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
         player = self._get_player()
@@ -146,13 +137,6 @@ class MusicControlView(discord.ui.View):
             view=None
         )
 
-    @discord.ui.button(emoji="🔊", style=discord.ButtonStyle.secondary, row=1)
-    async def btn_vol_up(self, interaction: discord.Interaction, button: discord.ui.Button):
-        player = self._get_player()
-        if not player:
-            return await interaction.response.send_message("Nothing is playing!", ephemeral=True)
-        player.set_volume(0.1)
-        await self._refresh(interaction)
 
 
 # ── Search dropdown ───────────────────────────────────────────────
@@ -304,29 +288,22 @@ class Music(commands.Cog):
             )
             embed.add_field(
                 name="▶️  Play",
-                value="""`$play <song name or URL>` — Play a song or add to queue
-`$search <query>` — Pick from 5 search results""",
+                value="`$play <song name or URL>` — Play a song or add to queue\n`$search <query>` — Pick from 5 search results",
                 inline=False
             )
             embed.add_field(
                 name="⏯️  Controls",
-                value="""`$skip` / `$s` — Skip current song
-`$pause` / `$resume` — Toggle pause
-`$remove` — Remove last queued song
-`$remove <#>` — Remove song at position""",
+                value="`$skip` / `$s` — Skip current song\n`$pause` / `$resume` — Toggle pause\n`$remove` — Remove last queued song\n`$remove <#>` — Remove song at position",
                 inline=False
             )
             embed.add_field(
                 name="🎛️  Button Controls",
-                value="""⏮ Previous  🔁 Loop  ⏸ Pause  🔀 Shuffle  ⏭ Skip
-🔉 Volume−  📋 Queue  ⏹ Stop  🔊 Volume+""",
+                value="⏮ Previous  🔁 Loop  ⏸ Pause  🔀 Shuffle  ⏭ Skip\n📋 Queue  ⏹ Stop",
                 inline=False
             )
             embed.add_field(
                 name="💡  Tips",
-                value="""• Works with song names, YouTube URLs, or search terms
-• Queue songs while one is already playing
-• Controls always move to the latest message""",
+                value="• Works with song names, YouTube URLs, or search terms\n• Queue songs while one is already playing\n• Controls always move to the latest message",
                 inline=False
             )
             embed.set_footer(text="Example: $play never gonna give you up")
@@ -490,29 +467,22 @@ class Music(commands.Cog):
             )
             embed.add_field(
                 name="▶️  Play",
-                value="""`$play <song name or URL>` — Play a song or add to queue
-`$search <query>` — Pick from 5 search results""",
+                value="`$play <song name or URL>` — Play a song or add to queue\n`$search <query>` — Pick from 5 search results",
                 inline=False
             )
             embed.add_field(
                 name="⏯️  Controls",
-                value="""`$skip` / `$s` — Skip current song
-`$pause` / `$resume` — Toggle pause
-`$remove` — Remove last queued song
-`$remove <#>` — Remove song at position""",
+                value="`$skip` / `$s` — Skip current song\n`$pause` / `$resume` — Toggle pause\n`$remove` — Remove last queued song\n`$remove <#>` — Remove song at position",
                 inline=False
             )
             embed.add_field(
                 name="🎛️  Button Controls",
-                value="""⏮ Previous  🔁 Loop  ⏸ Pause  🔀 Shuffle  ⏭ Skip
-🔉 Volume−  📋 Queue  ⏹ Stop  🔊 Volume+""",
+                value="⏮ Previous  🔁 Loop  ⏸ Pause  🔀 Shuffle  ⏭ Skip\n📋 Queue  ⏹ Stop",
                 inline=False
             )
             embed.add_field(
                 name="💡  Tips",
-                value="""• Works with song names, YouTube URLs, or search terms
-• Queue songs while one is already playing
-• Controls always move to the latest message""",
+                value="• Works with song names, YouTube URLs, or search terms\n• Queue songs while one is already playing\n• Controls always move to the latest message",
                 inline=False
             )
             embed.set_footer(text="Example: $play never gonna give you up")
