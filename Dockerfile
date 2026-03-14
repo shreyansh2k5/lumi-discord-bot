@@ -7,10 +7,12 @@ RUN apt-get update && apt-get install -y \
     npm \
     && rm -rf /var/lib/apt/lists/*
 
+# yt-dlp looks for "node" but Debian installs it as "nodejs"
+RUN ln -sf /usr/bin/nodejs /usr/local/bin/node
+
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
-# Force latest yt-dlp regardless of requirements.txt pin
 RUN pip install -U yt-dlp
 
 COPY . .
