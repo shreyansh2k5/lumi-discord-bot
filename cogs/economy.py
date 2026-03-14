@@ -29,36 +29,74 @@ class Economy(commands.Cog):
 
     # ── HELP ─────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="help", description="Detailed Master Economy Guide")
+    @commands.hybrid_command(name="help", description="Full list of Lumi commands 📖")
     async def help_command(self, ctx: commands.Context):
         embed = discord.Embed(
-            title="🌙  Lumi's Master Economy Guide",
-            description=f"Welcome to the **{LUNA_NAME}** economy! Use `/` or `$` to play.",
+            title="✨  Lumi — Command Guide",
+            description="Use `$command` or `/command` — both work!
+Admin-only commands are marked with 🔒",
             color=PINK
         )
-        embed.add_field(name="💰 Basic Income", value=(
-            f"• `daily` — `{DAILY_REWARD:,}` coins *(24h)*\n"
-            f"• `beg` — Random coins *(5m)*\n"
-            f"• `give <user> <amt>` — Transfer coins"
+        embed.add_field(name="💰 Economy", value=(
+            "`daily` — Claim 5,000 coins every 24h
+"
+            "`beg` — Beg for random coins (5m cooldown)
+"
+            "`balance` — Check your wallet
+"
+            "`give <@user> <amt>` — Send coins to someone
+"
+            "`profile` — View your stats & pets
+"
+            "`leaderboard` — Top 10 richest users"
         ), inline=False)
-        embed.add_field(name="🎲 High-Risk Games", value=(
-            "• `blackjack <amt>` — Play 21 *(2x–2.5x)*\n"
-            "• `flip <amt>` — Double or nothing\n"
-            "• `roll <amt>` — 6x jackpot on a 6\n"
-            "• `raid <user>` — Steal up to 25%"
+        embed.add_field(name="🎲 Games", value=(
+            "`blackjack <bet>` — Play 21 against Lumi
+"
+            "`flip <bet>` — 50/50 coin flip
+"
+            "`roll <bet>` — Roll a dice (6 = 6x jackpot!)
+"
+            "`raid <@user>` — Steal up to 25% of their wallet"
         ), inline=False)
-        embed.add_field(name="🛡️ Banking & Profile", value=(
-            "• `bank_deposit` — Safe Mode *(immune to raids)*\n"
-            "• `bank_withdraw` — Leave Safe Mode\n"
-            "• `profile` — View stats & pets\n"
-            "• `leaderboard` — Top 10 richest\n"
-            "• `balance` — Check your wallet"
+        embed.add_field(name="🛡️ Bank", value=(
+            "`bank_deposit` — Safe Mode: immune to raids for 24h
+"
+            "`bank_withdraw` — Leave Safe Mode"
         ), inline=False)
-        embed.add_field(name="🐾 Shopping", value=(
-            "• `shop` — Browse the pet shop\n"
-            "• `shop buy <pet>` — Adopt a pet"
+        embed.add_field(name="🐾 Pet Shop", value=(
+            "`shop` — Browse available pets
+"
+            "`shop buy <pet>` — Adopt a pet"
         ), inline=False)
-        embed.set_footer(text="Tip: Both Prefix ($) and Slash (/) work! 🌸")
+        embed.add_field(name="🎵 Music", value=(
+            "`play <song/URL>` — Play from YouTube
+"
+            "`play` — Show all music commands
+"
+            "`search <query>` — Pick from 5 results
+"
+            "`skip` — Skip current song
+"
+            "`pause` / `resume` — Toggle pause
+"
+            "`remove` — Remove last queued song"
+        ), inline=False)
+        embed.add_field(name="ℹ️ Server", value=(
+            "`/status` — Lumi's uptime & latency
+"
+            "`/server_info` — Info about this server"
+        ), inline=False)
+        embed.add_field(name="🔒 Admin Only", value=(
+            "`/mute` `/unmute` `/kick` `/ban`
+"
+            "`/badword` — Manage word filter
+"
+            "`/deadchat` — Configure dead chat revival
+"
+            "`/exception` — Manage filter-exempt roles"
+        ), inline=False)
+        embed.set_footer(text="Tip: @mention or reply to Lumi to chat with her! 🌸")
         await ctx.send(embed=embed)
 
     # ── DAILY ─────────────────────────────────────────────────────
