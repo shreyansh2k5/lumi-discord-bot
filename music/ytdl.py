@@ -39,19 +39,13 @@ print(f"[Music] Cookies: {'✅ ' + str(_COOKIES_FILE) if _has_cookies else '❌ 
 _COOKIE_OPTS = {"cookiefile": str(_COOKIES_FILE)} if _has_cookies else {}
 
 YTDL_OPTIONS = {
-    "format":         "bestaudio",
+    "format":         "bestaudio/best",
     "noplaylist":     True,
-    "quiet":          True,
-    "no_warnings":    True,
+    "quiet":          False,   # show full errors for debugging
+    "no_warnings":    False,
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
     "extract_flat":   False,
-    "extractor_args": {
-        "youtube": {
-            "player_client": ["android"],
-            "player_skip":   ["webpage", "configs"],
-        }
-    },
     **_COOKIE_OPTS,
 }
 
