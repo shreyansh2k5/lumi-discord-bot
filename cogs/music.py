@@ -208,7 +208,7 @@ class SearchSelect(discord.ui.Select):
             await self.cog._move_now_playing(player, channel)
         else:
             player.queue.append(track)
-            await player.play_next(after=lambda e: self.cog._after_track(guild_id, channel))
+            player.play_next(after=lambda e: self.cog._after_track(guild_id, channel))
             await self.cog._send_now_playing(player, channel)
 
 
@@ -251,7 +251,7 @@ class Music(commands.Cog):
                 except Exception:
                     pass
             return
-        await player.play_next(after=lambda e: self._after_track(guild_id, channel))
+        player.play_next(after=lambda e: self._after_track(guild_id, channel))
         await self._move_now_playing(player, channel)
 
     async def _send_now_playing(self, player: GuildPlayer, channel: discord.TextChannel):
@@ -356,7 +356,7 @@ class Music(commands.Cog):
             except Exception: pass
         else:
             player.queue.append(track)
-            await player.play_next(after=lambda e: self._after_track(guild_id, ctx.channel))
+            player.play_next(after=lambda e: self._after_track(guild_id, ctx.channel))
             await self._send_now_playing(player, ctx.channel)
 
     # ── $skip ─────────────────────────────────────────────────────
