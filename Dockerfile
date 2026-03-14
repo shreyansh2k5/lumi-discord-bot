@@ -10,6 +10,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
+# Force latest yt-dlp regardless of requirements.txt pin
+RUN pip install -U yt-dlp
 
 COPY . .
 
