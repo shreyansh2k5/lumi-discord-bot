@@ -46,6 +46,15 @@ def build_np_embed(player: wavelink.Player, track: wavelink.Playable = None) -> 
     return embed
 
 
+def _is_lavalink_ready() -> bool:
+    """Check if at least one Lavalink node is connected and ready."""
+    try:
+        node = wavelink.Pool.get_node()
+        return node is not None and node.status == wavelink.NodeStatus.CONNECTED
+    except Exception:
+        return False
+
+
 class MusicControlView(discord.ui.View):
     def __init__(self, cog: "Music", guild_id: int):
         super().__init__(timeout=None)
@@ -148,8 +157,8 @@ class SearchSelect(discord.ui.Select):
             embed=discord.Embed(description=f"✅ **{track.title}** added!", color=PINK), view=None)
         if not interaction.user.voice:
             return await interaction.followup.send("Join a voice channel first!", ephemeral=True)
-        if not wavelink.Pool.nodes:
-            return await interaction.followup.send("❌ Lavalink not connected.", ephemeral=True)
+        if not _is_lavalink_ready():
+            return await interaction.followup.send("❌ Lavalink not ready yet — try again in a moment.", ephemeral=True)
         player: wavelink.Player = interaction.guild.voice_client
         if not player:
             try:
@@ -157,13 +166,15 @@ class SearchSelect(discord.ui.Select):
                 player.autoplay = wavelink.AutoPlayMode.disabled
             except Exception as e:
                 return await interaction.followup.send(f"❌ Voice connect failed: {e}", ephemeral=True)
+        player._text_channel = interaction.channel
         if player.playing or player.paused:
             await player.queue.put_wait(track)
-            await self.cog._send_np(player, interaction.channel)
+            pos = len(player.queue)
+            await interaction.followup.send(
+                embed=discord.Embed(description=f"📋 **{track.title}** added at position #{pos}", color=PINK),
+                ephemeral=True)
         else:
             await player.play(track)
-            await asyncio.sleep(0.5)
-            await self.cog._send_np(player, interaction.channel, track)
 
 
 class SearchView(discord.ui.View):
@@ -180,7 +191,7 @@ class Music(commands.Cog):
         asyncio.create_task(self._connect_lavalink())
 
     async def _connect_lavalink(self):
-        await asyncio.sleep(2)
+        await asyncio.sleep(3)
         for n in LAVALINK_NODES:
             try:
                 node = wavelink.Node(uri=n["uri"], password=n["password"])
@@ -189,27 +200,53 @@ class Music(commands.Cog):
                 return
             except Exception as e:
                 print(f"[Music] ❌ {n['uri']} failed: {e}")
-        print("[Music] ❌ All Lavalink nodes failed")
+        print("[Music] ❌ All Lavalink nodes failed — music unavailable")
 
     @commands.Cog.listener()
     async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload):
-        print(f"[Music] Node ready: {payload.node.uri}")
+        print(f"[Music] ✅ Node ready: {payload.node.uri} | Session resumed: {payload.resumed}")
 
     @commands.Cog.listener()
     async def on_wavelink_track_start(self, payload: wavelink.TrackStartEventPayload):
         player = payload.player
         if not player:
             return
+        track   = payload.track
         channel = getattr(player, "_text_channel", None)
+        print(f"[Music] ▶ Track started: {track.title}")
         if channel:
-            await self._send_np(player, channel)
+            await self._send_np(player, channel, track)
 
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
         player = payload.player
         if not player:
             return
+
+        reason  = payload.reason
         channel = getattr(player, "_text_channel", None)
+        print(f"[Music] ⏹ Track ended: reason={reason}")
+
+        # loadFailed = Lavalink couldn't load the track (YouTube blocked etc)
+        if str(reason).lower() in ("loadfailed", "error"):
+            if channel:
+                try:
+                    await channel.send(
+                        embed=discord.Embed(
+                            description="❌ Couldn't load that track — the Lavalink server may be having issues with YouTube. Try a different song!",
+                            color=discord.Color.red()
+                        ),
+                        delete_after=15
+                    )
+                except Exception:
+                    pass
+            if player.queue.is_empty:
+                await player.disconnect()
+            else:
+                await player.play(player.queue.get())
+            return
+
+        # Normal end — play next or clean up
         if not player.queue.is_empty:
             await player.play(player.queue.get())
         else:
@@ -223,20 +260,24 @@ class Music(commands.Cog):
 
     @commands.Cog.listener()
     async def on_wavelink_track_exception(self, payload: wavelink.TrackExceptionEventPayload):
-        player = payload.player
-        print(f"[Music] ❌ Track exception: {payload.exception}")
+        player  = payload.player
         channel = getattr(player, "_text_channel", None)
+        print(f"[Music] ❌ Track exception: {payload.exception}")
         if channel:
             try:
                 await channel.send(
-                    embed=discord.Embed(description=f"❌ Couldn't play that track: `{payload.exception}`", color=discord.Color.red()),
-                    delete_after=10)
+                    embed=discord.Embed(
+                        description=f"❌ Track error: `{payload.exception}`",
+                        color=discord.Color.red()
+                    ),
+                    delete_after=10
+                )
             except Exception:
                 pass
 
     @commands.Cog.listener()
     async def on_wavelink_track_stuck(self, payload: wavelink.TrackStuckEventPayload):
-        print(f"[Music] ⚠️ Track stuck, skipping...")
+        print(f"[Music] ⚠️ Track stuck — skipping")
         if payload.player:
             await payload.player.skip(force=True)
 
@@ -263,29 +304,44 @@ class Music(commands.Cog):
             return await ctx.send(embed=embed)
 
         if not ctx.author.voice:
-            return await ctx.send(embed=discord.Embed(description="❌ Join a voice channel first!", color=discord.Color.red()))
+            return await ctx.send(embed=discord.Embed(
+                description="❌ Join a voice channel first!", color=discord.Color.red()))
 
-        if not wavelink.Pool.nodes:
-            return await ctx.send(embed=discord.Embed(description="❌ Music service unavailable — try again in a moment.", color=discord.Color.red()))
+        if not _is_lavalink_ready():
+            return await ctx.send(embed=discord.Embed(
+                description="❌ Music service connecting — wait a moment and try again.", color=discord.Color.red()))
 
         await ctx.typing()
 
-        tracks = await wavelink.Playable.search(query)
+        try:
+            tracks = await wavelink.Playable.search(query)
+        except Exception as e:
+            print(f"[Music] Search error: {e}")
+            return await ctx.send(embed=discord.Embed(
+                description="❌ Search failed — Lavalink may be down.", color=discord.Color.red()))
+
         if not tracks:
-            return await ctx.send(embed=discord.Embed(description="❌ Couldn't find that song!", color=discord.Color.red()))
+            return await ctx.send(embed=discord.Embed(
+                description="❌ No results found for that query.", color=discord.Color.red()))
 
         track = tracks[0]
         track.extras = wavelink.ExtrasNamespace({"requester": ctx.author.display_name})
+        print(f"[Music] 🔎 Found: {track.title} ({track.uri})")
 
         player: wavelink.Player = ctx.guild.voice_client
         if not player:
             try:
                 player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
                 player.autoplay = wavelink.AutoPlayMode.disabled
+                print(f"[Music] 🔊 Connected to VC: {ctx.author.voice.channel.name}")
             except Exception as e:
-                return await ctx.send(embed=discord.Embed(description=f"❌ Could not connect: {e}", color=discord.Color.red()))
+                return await ctx.send(embed=discord.Embed(
+                    description=f"❌ Could not connect to voice: {e}", color=discord.Color.red()))
         elif player.channel != ctx.author.voice.channel:
             await player.move_to(ctx.author.voice.channel)
+
+        # Store channel before playing so events can find it
+        player._text_channel = ctx.channel
 
         if ctx.interaction is None:
             try: await ctx.message.delete()
@@ -302,9 +358,9 @@ class Music(commands.Cog):
             try: await msg.delete(delay=5)
             except Exception: pass
         else:
-            # Play immediately — on_wavelink_track_start will send the now-playing embed
-            player._text_channel = ctx.channel
+            print(f"[Music] ▶ Sending play request to Lavalink...")
             await player.play(track)
+            # Note: now-playing embed is sent by on_wavelink_track_start
 
     @commands.command(name="skip", aliases=["s"])
     async def skip(self, ctx: commands.Context):
@@ -352,7 +408,10 @@ class Music(commands.Cog):
         try: await ctx.message.delete()
         except Exception: pass
         searching = await ctx.send(embed=discord.Embed(description=f"🔍 Searching for **{query}**...", color=PINK))
-        tracks = await wavelink.Playable.search(query)
+        try:
+            tracks = await wavelink.Playable.search(query)
+        except Exception:
+            return await searching.edit(embed=discord.Embed(description="❌ Search failed.", color=discord.Color.red()))
         if not tracks:
             return await searching.edit(embed=discord.Embed(description="❌ No results found!", color=discord.Color.red()))
         results = tracks[:5]
