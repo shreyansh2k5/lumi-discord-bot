@@ -124,14 +124,15 @@ async def on_message(message: discord.Message):
         return
 
     # ── @lumi play <query> shortcut ──────────────────────────────
-    # Lets users type "@Lumi play never gonna give you up" naturally
     clean_check = message.clean_content.lower()
     for part in [f"@{bot.user.display_name.lower()} play ", f"@{bot.user.name.lower()} play "]:
         if clean_check.startswith(part):
             query = message.clean_content[len(part):].strip()
             if query:
                 ctx = await bot.get_context(message)
-                await bot.get_cog("Music").play(ctx, query=query)
+                music_cog = bot.get_cog("Music")
+                if music_cog:
+                    await music_cog.play(ctx, query=query)
             return
 
     # ── Build and send AI response ───────────────────────────────
