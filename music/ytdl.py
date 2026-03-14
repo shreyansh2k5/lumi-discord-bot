@@ -42,15 +42,14 @@ print(f"[Music] Cookies: {'✅ ' + str(_COOKIES_FILE) if _has_cookies else '❌ 
 _COOKIE_OPTS = {"cookiefile": str(_COOKIES_FILE)} if _has_cookies else {}
 
 YTDL_OPTIONS = {
-    "format":            "bestaudio/best",
+    "format":            "bestaudio[acodec!=none]/bestaudio/best[acodec!=none]/best",
     "noplaylist":        True,
-    "quiet":             True,
-    "no_warnings":       True,
+    "quiet":             False,
+    "no_warnings":       False,
+    "verbose":           True,
     "default_search":    "ytsearch",
     "source_address":    "0.0.0.0",
     "extract_flat":      False,
-    # web_creator uses the web client — Node.js in Docker solves its JS challenge
-    "extractor_args":    {"youtube": {"player_client": ["web_creator"]}},
     **_COOKIE_OPTS,
 }
 
