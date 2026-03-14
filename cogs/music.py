@@ -1,39 +1,57 @@
 # cogs/music.py
+# Uses wavelink 3 + free public Lavalink v4 server.
+# Lavalink handles all YouTube streaming — no yt-dlp, no cookies, no IP issues.
 
 import asyncio
 import discord
+import wavelink
 from discord import app_commands
 from discord.ext import commands
 
-from music.ytdl import fetch_track, search_tracks, format_duration
-from music.player import get_player, create_player, remove_player, GuildPlayer
 from core.embeds import PINK
 
 
-# ── Now-Playing embed ─────────────────────────────────────────────
+# ── Free public Lavalink v4 nodes (tried in order) ───────────────
+LAVALINK_NODES = [
+    {"uri": "https://lavalinkv4.serenetia.com", "password": "https://dsc.gg/ajidevserver"},
+    {"uri": "http://lavalinkv4.serenetia.com:80", "password": "https://dsc.gg/ajidevserver"},
+    {"uri": "https://lavalink.serenetia.com",    "password": "https://dsc.gg/ajidevserver"},
+]
 
-def build_now_playing_embed(player: GuildPlayer) -> discord.Embed:
+
+def format_duration(ms: int) -> str:
+    if not ms:
+        return "Live"
+    s = ms // 1000
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h}:{m:02}:{sec:02}" if h else f"{m}:{sec:02}"
+
+
+# ── Now-playing embed ─────────────────────────────────────────────
+
+def build_np_embed(player: wavelink.Player) -> discord.Embed:
     track = player.current
     if not track:
         return discord.Embed(description="Nothing playing.", color=PINK)
 
     embed = discord.Embed(
         title="🎵  Now Playing",
-        description=f"**[{track['title']}]({track['webpage_url']})**",
+        description=f"**[{track.title}]({track.uri})**",
         color=PINK
     )
-    embed.add_field(name="⏱ Duration",  value=format_duration(track["duration"]), inline=True)
-    embed.add_field(name="👤 Requester", value=track.get("requester", "Unknown"),  inline=True)
+    embed.add_field(name="⏱ Duration",  value=format_duration(track.length), inline=True)
+    embed.add_field(name="👤 Requester", value=getattr(track, "requester", "Unknown"), inline=True)
 
-    status_parts = []
-    if player.loop:    status_parts.append("🔁 Loop")
-    if player.shuffle: status_parts.append("🔀 Shuffle")
-    if player.is_paused: status_parts.append("⏸ Paused")
-    status_parts.append(f"📋 Queue: {len(player.queue)}")
-    embed.add_field(name="Status", value=" · ".join(status_parts), inline=False)
+    status = []
+    if player.paused:     status.append("⏸ Paused")
+    if getattr(player, "loop_mode", False): status.append("🔁 Loop")
+    queue_len = player.queue.count if hasattr(player.queue, "count") else len(player.queue)
+    status.append(f"📋 Queue: {queue_len}")
+    embed.add_field(name="Status", value=" · ".join(status), inline=False)
 
-    if track.get("thumbnail"):
-        embed.set_thumbnail(url=track["thumbnail"])
+    if track.artwork:
+        embed.set_thumbnail(url=track.artwork)
 
     embed.set_footer(text="Lumi Music 🎶  •  Use the buttons to control playback")
     return embed
@@ -47,179 +65,128 @@ class MusicControlView(discord.ui.View):
         self.cog      = cog
         self.guild_id = guild_id
 
-    def _get_player(self) -> GuildPlayer | None:
-        return get_player(self.guild_id)
+    def _player(self) -> wavelink.Player | None:
+        guild = self.cog.bot.get_guild(self.guild_id)
+        return guild.voice_client if guild else None
 
     async def _update_embed(self, interaction: discord.Interaction):
-        player = self._get_player()
+        player = self._player()
         if player and player.current:
-            embed = build_now_playing_embed(player)
-            await interaction.response.edit_message(embed=embed, view=self)
+            await interaction.response.edit_message(embed=build_np_embed(player), view=self)
         else:
             await interaction.response.edit_message(
-                embed=discord.Embed(description="⏹ Playback stopped.", color=PINK),
-                view=None
+                embed=discord.Embed(description="⏹ Playback stopped.", color=PINK), view=None
             )
 
-    # Row 1
     @discord.ui.button(emoji="⏮", style=discord.ButtonStyle.secondary, row=0)
-    async def btn_previous(self, interaction: discord.Interaction, button: discord.ui.Button):
-        player = self._get_player()
-        if not player or not player.current:
-            return await interaction.response.send_message("Nothing is playing!", ephemeral=True)
-        player.queue.appendleft(player.current)
-        player.queue.appendleft(player.current)
-        player.skip()
+    async def btn_prev(self, interaction: discord.Interaction, button: discord.ui.Button):
+        player = self._player()
+        if not player: return await interaction.response.send_message("Nothing playing!", ephemeral=True)
+        await player.seek(0)
         await interaction.response.defer()
 
     @discord.ui.button(emoji="🔁", style=discord.ButtonStyle.secondary, row=0)
     async def btn_loop(self, interaction: discord.Interaction, button: discord.ui.Button):
-        player = self._get_player()
-        if not player:
-            return await interaction.response.send_message("Nothing is playing!", ephemeral=True)
-        player.loop = not player.loop
-        button.style = discord.ButtonStyle.success if player.loop else discord.ButtonStyle.secondary
+        player = self._player()
+        if not player: return await interaction.response.send_message("Nothing playing!", ephemeral=True)
+        if player.queue.mode == wavelink.QueueMode.loop:
+            player.queue.mode = wavelink.QueueMode.normal
+            button.style = discord.ButtonStyle.secondary
+        else:
+            player.queue.mode = wavelink.QueueMode.loop
+            button.style = discord.ButtonStyle.success
         await self._update_embed(interaction)
 
     @discord.ui.button(emoji="⏸", style=discord.ButtonStyle.primary, row=0)
     async def btn_pause(self, interaction: discord.Interaction, button: discord.ui.Button):
-        player = self._get_player()
-        if not player:
-            return await interaction.response.send_message("Nothing is playing!", ephemeral=True)
-        paused = player.toggle_pause()
-        button.emoji = discord.PartialEmoji(name="▶" if paused else "⏸")
-        button.style = discord.ButtonStyle.secondary if paused else discord.ButtonStyle.primary
+        player = self._player()
+        if not player: return await interaction.response.send_message("Nothing playing!", ephemeral=True)
+        await player.pause(not player.paused)
+        button.emoji = discord.PartialEmoji(name="▶" if player.paused else "⏸")
+        button.style = discord.ButtonStyle.secondary if player.paused else discord.ButtonStyle.primary
         await self._update_embed(interaction)
 
     @discord.ui.button(emoji="🔀", style=discord.ButtonStyle.secondary, row=0)
     async def btn_shuffle(self, interaction: discord.Interaction, button: discord.ui.Button):
-        player = self._get_player()
-        if not player:
-            return await interaction.response.send_message("Nothing is playing!", ephemeral=True)
-        player.shuffle = not player.shuffle
-        button.style = discord.ButtonStyle.success if player.shuffle else discord.ButtonStyle.secondary
-        await self._update_embed(interaction)
+        player = self._player()
+        if not player: return await interaction.response.send_message("Nothing playing!", ephemeral=True)
+        player.queue.shuffle()
+        button.style = discord.ButtonStyle.success
+        await interaction.response.defer()
 
     @discord.ui.button(emoji="⏭", style=discord.ButtonStyle.secondary, row=0)
     async def btn_skip(self, interaction: discord.Interaction, button: discord.ui.Button):
-        player = self._get_player()
-        if not player or not player.current:
-            return await interaction.response.send_message("Nothing to skip!", ephemeral=True)
-        player.skip()
+        player = self._player()
+        if not player: return await interaction.response.send_message("Nothing playing!", ephemeral=True)
+        await player.skip(force=True)
         await interaction.response.defer()
 
-    # Row 2
     @discord.ui.button(emoji="📋", style=discord.ButtonStyle.secondary, row=1)
     async def btn_queue(self, interaction: discord.Interaction, button: discord.ui.Button):
-        player = self._get_player()
-        if not player or not player.queue_list:
-            return await interaction.response.send_message("The queue is empty!", ephemeral=True)
+        player = self._player()
+        if not player or player.queue.is_empty:
+            return await interaction.response.send_message("Queue is empty!", ephemeral=True)
         lines = [
-            f"`{i}.` {t['title']} ({format_duration(t['duration'])})"
-            for i, t in enumerate(player.queue_list[:10], start=1)
+            f"`{i}.` {t.title} ({format_duration(t.length)})"
+            for i, t in enumerate(list(player.queue)[:10], 1)
         ]
-        if len(player.queue_list) > 10:
-            lines.append(f"*...and {len(player.queue_list) - 10} more*")
+        if len(player.queue) > 10:
+            lines.append(f"*...and {len(player.queue) - 10} more*")
         embed = discord.Embed(title="📋  Queue", description="\n".join(lines), color=PINK)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(emoji="⏹", style=discord.ButtonStyle.danger, row=1)
     async def btn_stop(self, interaction: discord.Interaction, button: discord.ui.Button):
-        player = self._get_player()
-        if not player:
-            return await interaction.response.send_message("Nothing is playing!", ephemeral=True)
-        player.stop()
-        vc = player.voice_client
-        remove_player(self.guild_id)
-        await vc.disconnect()
+        player = self._player()
+        if not player: return await interaction.response.send_message("Nothing playing!", ephemeral=True)
+        await player.disconnect()
         await interaction.response.edit_message(
-            embed=discord.Embed(description="⏹ Stopped and disconnected.", color=PINK),
-            view=None
+            embed=discord.Embed(description="⏹ Stopped and disconnected.", color=PINK), view=None
         )
-
 
 
 # ── Search dropdown ───────────────────────────────────────────────
 
 class SearchSelect(discord.ui.Select):
-    def __init__(self, cog: "Music", results: list[dict], requester: str):
+    def __init__(self, cog: "Music", tracks: list[wavelink.Playable], requester: str):
         self.cog       = cog
-        self.results   = results
+        self.tracks    = tracks
         self.requester = requester
         options = [
             discord.SelectOption(
-                label=r["title"][:100],
-                description=f"{format_duration(r['duration'])} · {r['uploader'][:40]}"[:100],
+                label=t.title[:100],
+                description=f"{format_duration(t.length)} · {t.author[:40]}"[:100],
                 value=str(i)
             )
-            for i, r in enumerate(results)
+            for i, t in enumerate(tracks)
         ]
-        super().__init__(placeholder="🎵 Pick a song to play...", options=options)
+        super().__init__(placeholder="🎵 Pick a song...", options=options)
 
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
-        chosen = self.results[int(self.values[0])]
-
-        # Fetch full stream URL now (we only had flat info from search)
-        track = await fetch_track(chosen["webpage_url"])
-        if not track:
-            return await interaction.followup.send("❌ Failed to load that track.", ephemeral=True)
-
-        track["requester"] = self.requester
-
-        # Disable the dropdown
-        self.disabled = True
+        track = self.tracks[int(self.values[0])]
+        track.extras = wavelink.ExtrasNamespace({"requester": self.requester})
         await interaction.message.edit(
-            embed=discord.Embed(
-                description=f"✅ **{track['title']}** added!",
-                color=PINK
-            ),
-            view=None
+            embed=discord.Embed(description=f"✅ **{track.title}** added!", color=PINK), view=None
         )
-
-        # Play via cog
-        guild_id = interaction.guild_id
-        player   = get_player(guild_id)
-
-        if not interaction.user.voice or not interaction.user.voice.channel:
-            return await interaction.followup.send("❌ Join a voice channel first!", ephemeral=True)
-
-        vc_channel = interaction.user.voice.channel
-        if player:
-            if player.voice_client.channel != vc_channel:
-                await player.voice_client.move_to(vc_channel)
+        if not interaction.user.voice:
+            return await interaction.followup.send("Join a voice channel first!", ephemeral=True)
+        player: wavelink.Player = interaction.guild.voice_client  # type: ignore
+        if not player:
+            player = await interaction.user.voice.channel.connect(cls=wavelink.Player)
+        if player.playing:
+            await player.queue.put_wait(track)
+            await self.cog._move_np(player, interaction.channel)
         else:
-            vc     = await vc_channel.connect()
-            player = create_player(guild_id, vc)
-
-        channel = interaction.channel
-        if player.voice_client.is_playing() or player.voice_client.is_paused():
-            player.queue.append(track)
-            pos = len(player.queue)
-            embed = discord.Embed(
-                title="📋  Added to Queue",
-                description=f"**{track['title']}**\n⏱ {format_duration(track['duration'])} · Position #{pos}",
-                color=PINK
-            )
-            if track.get("thumbnail"):
-                embed.set_thumbnail(url=track["thumbnail"])
-            await interaction.followup.send(embed=embed)
-            # Move now-playing to bottom
-            await self.cog._move_now_playing(player, channel)
-        else:
-            player.queue.append(track)
-            player.play_next(after=lambda e: self.cog._after_track(guild_id, channel))
-            await self.cog._send_now_playing(player, channel)
+            await player.queue.put_wait(track)
+            await player.play(player.queue.get())
+            await self.cog._send_np(player, interaction.channel)
 
 
 class SearchView(discord.ui.View):
-    def __init__(self, cog: "Music", results: list[dict], requester: str):
+    def __init__(self, cog: "Music", tracks: list, requester: str):
         super().__init__(timeout=30)
-        self.add_item(SearchSelect(cog, results, requester))
-
-    async def on_timeout(self):
-        for item in self.children:
-            item.disabled = True
+        self.add_item(SearchSelect(cog, tracks, requester))
 
 
 # ── Music Cog ─────────────────────────────────────────────────────
@@ -228,153 +195,119 @@ class Music(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    # ── Internal helpers ─────────────────────────────────────────
+    async def cog_load(self):
+        """Connect to Lavalink nodes when cog loads."""
+        nodes = []
+        for n in LAVALINK_NODES:
+            nodes.append(wavelink.Node(uri=n["uri"], password=n["password"]))
+        try:
+            await wavelink.Pool.connect(nodes=nodes, client=self.bot, cache_capacity=100)
+            print(f"[Music] ✅ Connected to Lavalink")
+        except Exception as e:
+            print(f"[Music] ❌ Lavalink connection failed: {e}")
 
-    def _after_track(self, guild_id: int, channel: discord.TextChannel):
-        asyncio.run_coroutine_threadsafe(
-            self._advance(guild_id, channel),
-            self.bot.loop
-        )
+    @commands.Cog.listener()
+    async def on_wavelink_node_ready(self, payload: wavelink.NodeReadyEventPayload):
+        print(f"[Music] Node ready: {payload.node.uri}")
 
-    async def _advance(self, guild_id: int, channel: discord.TextChannel):
-        player = get_player(guild_id)
+    @commands.Cog.listener()
+    async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
+        player = payload.player
         if not player:
             return
-        if not player.queue and not player.loop:
-            player.current = None
-            if player.now_playing_message:
+        channel = getattr(player, "_text_channel", None)
+        if not player.queue.is_empty:
+            track = player.queue.get()
+            await player.play(track)
+            if channel:
+                await self._move_np(player, channel)
+        else:
+            if player.now_playing_msg:
                 try:
-                    await player.now_playing_message.edit(
-                        embed=discord.Embed(description="✅ Queue finished!", color=PINK),
-                        view=None
+                    await player.now_playing_msg.edit(
+                        embed=discord.Embed(description="✅ Queue finished!", color=PINK), view=None
                     )
                 except Exception:
                     pass
-            return
-        player.play_next(after=lambda e: self._after_track(guild_id, channel))
-        await self._move_now_playing(player, channel)
 
-    async def _send_now_playing(self, player: GuildPlayer, channel: discord.TextChannel):
-        """Sends a brand new now-playing message and stores the reference."""
-        # Delete old one first so controls always appear at the bottom
-        if player.now_playing_message:
+    async def _send_np(self, player: wavelink.Player, channel):
+        """Delete old now-playing message and send a new one at the bottom."""
+        if hasattr(player, "now_playing_msg") and player.now_playing_msg:
             try:
-                await player.now_playing_message.delete()
+                await player.now_playing_msg.delete()
             except Exception:
                 pass
-        embed = build_now_playing_embed(player)
+        embed = build_np_embed(player)
         view  = MusicControlView(self, channel.guild.id)
-        player.now_playing_message = await channel.send(embed=embed, view=view)
+        player.now_playing_msg = await channel.send(embed=embed, view=view)
+        player._text_channel   = channel
 
-    async def _move_now_playing(self, player: GuildPlayer, channel: discord.TextChannel):
-        """
-        When a new song is queued while something is playing,
-        deletes the old controls and resends them at the bottom so they're always visible.
-        """
-        await self._send_now_playing(player, channel)
+    async def _move_np(self, player: wavelink.Player, channel):
+        """Alias for _send_np — always sends controls at bottom."""
+        await self._send_np(player, channel)
 
     # ── $play / /play ─────────────────────────────────────────────
 
     @commands.hybrid_command(name="play", description="Play a song from YouTube 🎵")
     @app_commands.describe(query="Song name or YouTube URL")
     async def play(self, ctx: commands.Context, *, query: str = None):
-
-        # No query = show music help
         if not query:
-            embed = discord.Embed(
-                title="🎵  Lumi Music — Commands",
-                description="Play music from YouTube directly in your voice channel!",
-                color=PINK
-            )
-            embed.add_field(
-                name="▶️  Play",
-                value="`$play <song name or URL>` — Play a song or add to queue\n`$search <query>` — Pick from 5 search results",
-                inline=False
-            )
-            embed.add_field(
-                name="⏯️  Controls",
-                value="`$skip` / `$s` — Skip current song\n`$pause` / `$resume` — Toggle pause\n`$remove` — Remove last queued song\n`$remove <#>` — Remove song at position",
-                inline=False
-            )
-            embed.add_field(
-                name="🎛️  Button Controls",
-                value="⏮ Previous  🔁 Loop  ⏸ Pause  🔀 Shuffle  ⏭ Skip\n📋 Queue  ⏹ Stop",
-                inline=False
-            )
-            embed.add_field(
-                name="💡  Tips",
-                value="• Works with song names, YouTube URLs, or search terms\n• Queue songs while one is already playing\n• Controls always move to the latest message",
-                inline=False
-            )
+            embed = discord.Embed(title="🎵  Lumi Music — Commands", color=PINK)
+            embed.add_field(name="▶️  Play",      value="`$play <song/URL>` — Play from YouTube\n`$search <query>` — Pick from 5 results", inline=False)
+            embed.add_field(name="⏯️  Controls",  value="`$skip` / `$s` — Skip\n`$pause` / `$resume` — Toggle pause\n`$remove` — Remove last queued song\n`$remove <#>` — Remove by position", inline=False)
+            embed.add_field(name="🎛️  Buttons",   value="⏮ Restart  🔁 Loop  ⏸ Pause  🔀 Shuffle  ⏭ Skip\n📋 Queue  ⏹ Stop", inline=False)
+            embed.add_field(name="💡  Tips",      value="• Works with song names or YouTube URLs\n• Controls always appear at the bottom", inline=False)
             embed.set_footer(text="Example: $play never gonna give you up")
             return await ctx.send(embed=embed)
 
-        if not ctx.author.voice or not ctx.author.voice.channel:
-            return await ctx.send(
-                embed=discord.Embed(description="❌ Join a voice channel first!", color=discord.Color.red()),
-                ephemeral=True
-            )
+        if not ctx.author.voice:
+            return await ctx.send(embed=discord.Embed(description="❌ Join a voice channel first!", color=discord.Color.red()), ephemeral=True)
 
         await ctx.typing()
-        track = await fetch_track(query)
-        if not track:
-            return await ctx.send(
-                embed=discord.Embed(description="❌ Couldn't find that song!", color=discord.Color.red())
-            )
 
-        track["requester"] = ctx.author.display_name
-        guild_id   = ctx.guild.id
-        player     = get_player(guild_id)
-        vc_channel = ctx.author.voice.channel
+        tracks = await wavelink.Playable.search(query)
+        if not tracks:
+            return await ctx.send(embed=discord.Embed(description="❌ Couldn't find that song!", color=discord.Color.red()))
 
-        if player:
-            if player.voice_client.channel != vc_channel:
-                await player.voice_client.move_to(vc_channel)
-        else:
-            vc     = await vc_channel.connect()
-            player = create_player(guild_id, vc)
+        track = tracks[0]
+        track.extras = wavelink.ExtrasNamespace({"requester": ctx.author.display_name})
+
+        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
+        if not player:
+            player = await ctx.author.voice.channel.connect(cls=wavelink.Player)
+        elif player.channel != ctx.author.voice.channel:
+            await player.move_to(ctx.author.voice.channel)
 
         if ctx.interaction is None:
             try: await ctx.message.delete()
             except Exception: pass
 
-        if player.voice_client.is_playing() or player.voice_client.is_paused():
-            player.queue.append(track)
-            pos   = len(player.queue)
-            embed = discord.Embed(
-                title="📋  Added to Queue",
-                description=f"**{track['title']}**\n⏱ {format_duration(track['duration'])} · Position #{pos}",
-                color=PINK
-            )
-            if track.get("thumbnail"):
-                embed.set_thumbnail(url=track["thumbnail"])
-            embed.set_footer(text="Lumi Music 🎶")
+        if player.playing or player.paused:
+            await player.queue.put_wait(track)
+            pos = len(player.queue)
+            embed = discord.Embed(title="📋  Added to Queue", color=PINK,
+                description=f"**{track.title}**\n⏱ {format_duration(track.length)} · Position #{pos}")
+            if track.artwork:
+                embed.set_thumbnail(url=track.artwork)
             msg = await ctx.send(embed=embed)
-            # Move controls to bottom so they're always reachable
-            await self._move_now_playing(player, ctx.channel)
+            await self._move_np(player, ctx.channel)
             try: await msg.delete(delay=5)
             except Exception: pass
         else:
-            player.queue.append(track)
-            player.play_next(after=lambda e: self._after_track(guild_id, ctx.channel))
-            await self._send_now_playing(player, ctx.channel)
+            await player.queue.put_wait(track)
+            await player.play(player.queue.get())
+            await self._send_np(player, ctx.channel)
 
     # ── $skip ─────────────────────────────────────────────────────
 
     @commands.command(name="skip", aliases=["s"])
     async def skip(self, ctx: commands.Context):
-        player = get_player(ctx.guild.id)
-        if not player or not player.current:
-            return await ctx.send(
-                embed=discord.Embed(description="❌ Nothing is playing!", color=discord.Color.red()),
-                delete_after=5
-            )
-        title = player.current["title"]
-        player.skip()
-        msg = await ctx.send(
-            embed=discord.Embed(description=f"⏭ Skipped **{title}**", color=PINK),
-            delete_after=5
-        )
+        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
+        if not player or not player.playing:
+            return await ctx.send(embed=discord.Embed(description="❌ Nothing playing!", color=discord.Color.red()), delete_after=5)
+        title = player.current.title
+        await player.skip(force=True)
+        await ctx.send(embed=discord.Embed(description=f"⏭ Skipped **{title}**", color=PINK), delete_after=5)
         try: await ctx.message.delete()
         except Exception: pass
 
@@ -382,30 +315,12 @@ class Music(commands.Cog):
 
     @commands.command(name="pause", aliases=["resume"])
     async def pause(self, ctx: commands.Context):
-        player = get_player(ctx.guild.id)
-        if not player or not player.current:
-            return await ctx.send(
-                embed=discord.Embed(description="❌ Nothing is playing!", color=discord.Color.red()),
-                delete_after=5
-            )
-        paused = player.toggle_pause()
-        label  = "⏸ Paused" if paused else "▶ Resumed"
-        await ctx.send(
-            embed=discord.Embed(description=f"{label} **{player.current['title']}**", color=PINK),
-            delete_after=5
-        )
-        # Update the controls embed to reflect pause state
-        if player.now_playing_message:
-            try:
-                view = MusicControlView(self, ctx.guild.id)
-                # Fix pause button appearance
-                for item in view.children:
-                    if hasattr(item, 'emoji') and item.emoji and str(item.emoji) in ("⏸", "▶"):
-                        item.emoji = discord.PartialEmoji(name="▶" if paused else "⏸")
-                        item.style = discord.ButtonStyle.secondary if paused else discord.ButtonStyle.primary
-                await player.now_playing_message.edit(embed=build_now_playing_embed(player), view=view)
-            except Exception:
-                pass
+        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
+        if not player:
+            return await ctx.send(embed=discord.Embed(description="❌ Nothing playing!", color=discord.Color.red()), delete_after=5)
+        await player.pause(not player.paused)
+        label = "⏸ Paused" if player.paused else "▶ Resumed"
+        await ctx.send(embed=discord.Embed(description=f"{label} **{player.current.title}**", color=PINK), delete_after=5)
         try: await ctx.message.delete()
         except Exception: pass
 
@@ -413,42 +328,18 @@ class Music(commands.Cog):
 
     @commands.command(name="remove")
     async def remove(self, ctx: commands.Context, index: int = -1):
-        """
-        Removes a song from the queue.
-        $remove       → removes the last song added
-        $remove 2     → removes song at position 2
-        """
-        player = get_player(ctx.guild.id)
-        if not player or not player.queue_list:
-            return await ctx.send(
-                embed=discord.Embed(description="❌ The queue is empty!", color=discord.Color.red()),
-                delete_after=5
-            )
-
+        player: wavelink.Player = ctx.guild.voice_client  # type: ignore
+        if not player or player.queue.is_empty:
+            return await ctx.send(embed=discord.Embed(description="❌ Queue is empty!", color=discord.Color.red()), delete_after=5)
         q = list(player.queue)
-        # -1 means last added (end of queue)
         target = len(q) - 1 if index == -1 else index - 1
-
         if target < 0 or target >= len(q):
-            return await ctx.send(
-                embed=discord.Embed(
-                    description=f"❌ Invalid position. Queue has {len(q)} song(s).",
-                    color=discord.Color.red()
-                ),
-                delete_after=5
-            )
-
+            return await ctx.send(embed=discord.Embed(description=f"❌ Invalid position.", color=discord.Color.red()), delete_after=5)
         removed = q.pop(target)
-        from collections import deque
-        player.queue = deque(q)
-
-        await ctx.send(
-            embed=discord.Embed(
-                description=f"🗑️ Removed **{removed['title']}** from the queue.",
-                color=PINK
-            ),
-            delete_after=5
-        )
+        player.queue.clear()
+        for t in q:
+            await player.queue.put_wait(t)
+        await ctx.send(embed=discord.Embed(description=f"🗑️ Removed **{removed.title}**", color=PINK), delete_after=5)
         try: await ctx.message.delete()
         except Exception: pass
 
@@ -456,69 +347,21 @@ class Music(commands.Cog):
 
     @commands.command(name="search", aliases=["find"])
     async def search(self, ctx: commands.Context, *, query: str):
-        """Shows a dropdown of 5 YouTube results to pick from."""
-
-        # No query = show music help
-        if not query:
-            embed = discord.Embed(
-                title="🎵  Lumi Music — Commands",
-                description="Play music from YouTube directly in your voice channel!",
-                color=PINK
-            )
-            embed.add_field(
-                name="▶️  Play",
-                value="`$play <song name or URL>` — Play a song or add to queue\n`$search <query>` — Pick from 5 search results",
-                inline=False
-            )
-            embed.add_field(
-                name="⏯️  Controls",
-                value="`$skip` / `$s` — Skip current song\n`$pause` / `$resume` — Toggle pause\n`$remove` — Remove last queued song\n`$remove <#>` — Remove song at position",
-                inline=False
-            )
-            embed.add_field(
-                name="🎛️  Button Controls",
-                value="⏮ Previous  🔁 Loop  ⏸ Pause  🔀 Shuffle  ⏭ Skip\n📋 Queue  ⏹ Stop",
-                inline=False
-            )
-            embed.add_field(
-                name="💡  Tips",
-                value="• Works with song names, YouTube URLs, or search terms\n• Queue songs while one is already playing\n• Controls always move to the latest message",
-                inline=False
-            )
-            embed.set_footer(text="Example: $play never gonna give you up")
-            return await ctx.send(embed=embed)
-
-        if not ctx.author.voice or not ctx.author.voice.channel:
-            return await ctx.send(
-                embed=discord.Embed(description="❌ Join a voice channel first!", color=discord.Color.red()),
-                delete_after=5
-            )
-
+        if not ctx.author.voice:
+            return await ctx.send(embed=discord.Embed(description="❌ Join a voice channel first!", color=discord.Color.red()), delete_after=5)
         try: await ctx.message.delete()
         except Exception: pass
 
-        searching = await ctx.send(
-            embed=discord.Embed(description=f"🔍 Searching for **{query}**...", color=PINK)
-        )
+        searching = await ctx.send(embed=discord.Embed(description=f"🔍 Searching for **{query}**...", color=PINK))
+        tracks = await wavelink.Playable.search(query)
+        if not tracks:
+            return await searching.edit(embed=discord.Embed(description="❌ No results found!", color=discord.Color.red()))
 
-        results = await search_tracks(query, limit=5)
-        if not results:
-            return await searching.edit(
-                embed=discord.Embed(description="❌ No results found!", color=discord.Color.red())
-            )
-
-        lines = [
-            f"`{i}.` **{r['title'][:60]}** · {format_duration(r['duration'])}"
-            for i, r in enumerate(results, start=1)
-        ]
-        embed = discord.Embed(
-            title=f"🔍  Results for \"{query}\"",
-            description="\n".join(lines),
-            color=PINK
-        )
+        results = tracks[:5]
+        lines   = [f"`{i}.` **{t.title[:60]}** · {format_duration(t.length)}" for i, t in enumerate(results, 1)]
+        embed   = discord.Embed(title=f"🔍  Results for \"{query}\"", description="\n".join(lines), color=PINK)
         embed.set_footer(text="Select a song below • Expires in 30 seconds")
-        view = SearchView(self, results, ctx.author.display_name)
-        await searching.edit(embed=embed, view=view)
+        await searching.edit(embed=embed, view=SearchView(self, results, ctx.author.display_name))
 
 
 async def setup(bot: commands.Bot):
