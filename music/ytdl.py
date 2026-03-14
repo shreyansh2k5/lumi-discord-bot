@@ -62,18 +62,17 @@ def _pytube_stream_sync(url_or_id: str) -> dict | None:
     """Get direct audio stream URL via pytubefix."""
     try:
         from pytubefix import YouTube
-        # Accept video ID or full URL
+        from pytubefix.exceptions import AgeRestrictedError, VideoUnavailable
         if not url_or_id.startswith("http"):
             url_or_id = f"https://www.youtube.com/watch?v={url_or_id}"
+        print(f"[Music] pytubefix fetching: {url_or_id}")
         yt = YouTube(url_or_id, use_oauth=False, allow_oauth_cache=False)
-        # Get best audio-only stream
-        stream = (
-            yt.streams.filter(only_audio=True)
-              .order_by("abr")
-              .last()
-        )
+        print(f"[Music] pytubefix title: {yt.title}")
+        streams = yt.streams.filter(only_audio=True).order_by("abr")
+        print(f"[Music] pytubefix streams found: {len(streams)}")
+        stream = streams.last()
         if not stream:
-            print(f"[Music] pytubefix: no audio stream for {url_or_id}")
+            print(f"[Music] pytubefix: no audio stream")
             return None
         print(f"[Music] pytubefix got stream: {yt.title} ({stream.abr})")
         return {
@@ -85,7 +84,7 @@ def _pytube_stream_sync(url_or_id: str) -> dict | None:
             "uploader":    yt.author or "Unknown",
         }
     except Exception as e:
-        print(f"[Music] pytubefix stream error: {e}")
+        print(f"[Music] pytubefix stream error: {type(e).__name__}: {e}")
         return None
 
 
