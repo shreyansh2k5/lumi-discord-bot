@@ -40,14 +40,14 @@ else:
 
 # ── yt-dlp options ────────────────────────────────────────────────
 YTDL_OPTIONS = {
-    "format":         "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best",
+    "format":         "bestaudio/best",
     "noplaylist":     True,
     "quiet":          True,
     "no_warnings":    True,
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
     "extract_flat":   False,
-    "extractor_args": {"youtube": {"player_client": ["ios", "web_creator", "tv"]}},
+    "extractor_args": {"youtube": {"player_client": ["web"]}},
     **( {"cookiefile": str(_COOKIES_FILE)} if _has_cookies else {} ),
 }
 
