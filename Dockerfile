@@ -1,6 +1,7 @@
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y ffmpeg libopus0 && rm -rf /var/lib/apt/lists/*
+# Only need opus now — Lavalink handles all audio processing
+RUN apt-get update && apt-get install -y libopus0 && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY requirements.txt .
