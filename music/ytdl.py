@@ -1,16 +1,15 @@
 # music/ytdl.py
-# Primary: pytubefix (Innertube API)
+# Primary: pytubefix with WEB_EMBED client (most stable, no JS challenge)
 # Fallback: yt-dlp with cookies
 
 import asyncio
 import os
 import shutil
 from pathlib import Path
-from http.cookiejar import MozillaCookieJar
 
-# ── FFmpeg ────────────────────────────────────────────────────────
 _ROOT = Path(__file__).parent.parent.resolve()
 
+# ── FFmpeg ────────────────────────────────────────────────────────
 def _find_ffmpeg() -> str:
     local = _ROOT / "ffmpeg.exe"
     if local.exists():
@@ -40,33 +39,35 @@ if not _COOKIES_FILE.exists():
 _has_cookies = _COOKIES_FILE.exists()
 print(f"[Music] Cookies: {'✅ ' + str(_COOKIES_FILE) if _has_cookies else '❌ not found'}")
 
-
 # ── pytubefix ─────────────────────────────────────────────────────
+# Try multiple clients in order until one works
+_PYTUBE_CLIENTS = ["WEB_EMBED", "TV_EMBED", "WEB", "MWEB"]
 
 def _pytube_stream_sync(url: str) -> dict | None:
-    """Fetch a fresh stream URL via pytubefix right before playing."""
     try:
         from pytubefix import YouTube
-        yt = YouTube(url, use_oauth=False, allow_oauth_cache=False, client="TV")
-        title = yt.title
-        stream = yt.streams.filter(only_audio=True).order_by("abr").last()
-        if not stream:
-            # Try any stream if audio-only not available
-            stream = yt.streams.filter(progressive=True).order_by("resolution").last()
-        if not stream:
-            print(f"[Music] pytubefix: no stream for {url}")
-            return None
-        print(f"[Music] ✅ pytubefix: {title}")
-        return {
-            "title":       title,
-            "url":         stream.url,
-            "webpage_url": yt.watch_url,
-            "duration":    yt.length or 0,
-            "thumbnail":   yt.thumbnail_url or "",
-            "uploader":    yt.author or "Unknown",
-        }
+        for client in _PYTUBE_CLIENTS:
+            try:
+                yt = YouTube(url, client=client)
+                stream = yt.streams.filter(only_audio=True).order_by("abr").last()
+                if not stream:
+                    stream = yt.streams.first()
+                if stream and stream.url:
+                    print(f"[Music] ✅ pytubefix [{client}]: {yt.title}")
+                    return {
+                        "title":       yt.title,
+                        "url":         stream.url,
+                        "webpage_url": yt.watch_url,
+                        "duration":    yt.length or 0,
+                        "thumbnail":   yt.thumbnail_url or "",
+                        "uploader":    yt.author or "Unknown",
+                    }
+            except Exception as e:
+                print(f"[Music] pytubefix [{client}] failed: {type(e).__name__}: {e}")
+                continue
+        return None
     except Exception as e:
-        print(f"[Music] pytubefix error: {type(e).__name__}: {e}")
+        print(f"[Music] pytubefix import error: {e}")
         return None
 
 
@@ -87,6 +88,7 @@ def _pytube_search_sync(query: str, limit: int = 5) -> list[dict]:
                 })
             except Exception:
                 continue
+        print(f"[Music] pytubefix search: {len(results)} results")
         return results
     except Exception as e:
         print(f"[Music] pytubefix search error: {e}")
@@ -115,6 +117,7 @@ def _ytdlp_sync(query: str) -> dict | None:
                 return None
             if "entries" in info:
                 info = info["entries"][0]
+            print(f"[Music] yt-dlp: {info.get('title')}")
             return {
                 "title":       info.get("title", "Unknown"),
                 "url":         info.get("url") or info.get("webpage_url"),
@@ -131,11 +134,6 @@ def _ytdlp_sync(query: str) -> dict | None:
 # ── Public API ────────────────────────────────────────────────────
 
 async def fetch_track(query: str) -> dict | None:
-    """
-    Fetch track info. For direct URLs uses pytubefix directly.
-    For search queries, searches first then fetches the stream.
-    Always returns a fresh stream URL.
-    """
     loop = asyncio.get_event_loop()
 
     if query.startswith("http"):
@@ -144,7 +142,6 @@ async def fetch_track(query: str) -> dict | None:
             return result
         return await loop.run_in_executor(None, _ytdlp_sync, query)
 
-    # Search first
     results = await loop.run_in_executor(None, _pytube_search_sync, query, 1)
     if results:
         result = await loop.run_in_executor(None, _pytube_stream_sync, results[0]["webpage_url"])
@@ -152,20 +149,6 @@ async def fetch_track(query: str) -> dict | None:
             return result
 
     return await loop.run_in_executor(None, _ytdlp_sync, query)
-
-
-async def refresh_track_url(track: dict) -> dict:
-    """
-    Re-fetches a fresh stream URL for a track before playing.
-    pytubefix URLs expire — always call this right before FFmpeg starts.
-    """
-    if not track.get("webpage_url"):
-        return track
-    loop = asyncio.get_event_loop()
-    fresh = await loop.run_in_executor(None, _pytube_stream_sync, track["webpage_url"])
-    if fresh:
-        track["url"] = fresh["url"]
-    return track
 
 
 async def search_tracks(query: str, limit: int = 5) -> list[dict]:
