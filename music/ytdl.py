@@ -83,8 +83,7 @@ def _build_yt_opts(extra: dict = {}) -> dict:
     cookies_env = os.getenv("YT_COOKIES", "")
     if cookies_env:
         tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
-        tmp.write(cookies_env.replace("\n", "
-"))
+        tmp.write(cookies_env.replace("\n", ""))
         tmp.flush()
         opts["cookiefile"] = tmp.name
         return opts
