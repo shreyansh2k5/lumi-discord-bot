@@ -61,45 +61,59 @@ def format_duration(seconds: int) -> str:
 
 # ── YouTube via pytubefix (Innertube) ─────────────────────────────
 
+def _build_yt_opts(extra: dict = {}) -> dict:
+    """Build yt-dlp options, injecting cookies from file or env variable."""
+    import tempfile
+    opts = {
+        "format":         "bestaudio/best",
+        "noplaylist":     True,
+        "quiet":          True,
+        "no_warnings":    True,
+        "default_search": "ytsearch",
+        "source_address": "0.0.0.0",
+        "extract_flat":   False,
+        **extra,
+    }
+    # 1. cookies.txt file next to main.py
+    cookies_file = _ROOT / "cookies.txt"
+    if cookies_file.exists():
+        opts["cookiefile"] = str(cookies_file)
+        return opts
+    # 2. YT_COOKIES env variable (multiline cookie content stored in Railway vars)
+    cookies_env = os.getenv("YT_COOKIES", "")
+    if cookies_env:
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+        tmp.write(cookies_env.replace("\n", "
+"))
+        tmp.flush()
+        opts["cookiefile"] = tmp.name
+        return opts
+    return opts
+
+
 def _yt_fetch_sync(query: str) -> dict | None:
-    """Fetch YouTube audio using yt-dlp tv_embedded client — bypasses bot detection."""
+    """Fetch YouTube audio using yt-dlp with cookies."""
     import yt_dlp
-
-    # tv_embedded is the client used by YouTube TV/embedded players
-    # it doesn't require sign-in and works on server IPs
-    for client in ["tv_embedded", "tv", "web_embedded"]:
-        opts = {
-            "format":         "bestaudio/best",
-            "noplaylist":     True,
-            "quiet":          True,
-            "no_warnings":    True,
-            "default_search": "ytsearch",
-            "source_address": "0.0.0.0",
-            "extract_flat":   False,
-            "extractor_args": {"youtube": {"player_client": [client]}},
-        }
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            try:
-                info = ydl.extract_info(query, download=False)
-                if "entries" in info:
-                    info = info["entries"][0]
-                if not info.get("url"):
-                    continue
-                print(f"[Music] ✅ Got stream via {client}")
-                return {
-                    "title":       info.get("title",       "Unknown"),
-                    "url":         info["url"],
-                    "webpage_url": info.get("webpage_url", ""),
-                    "duration":    info.get("duration",    0),
-                    "thumbnail":   info.get("thumbnail",   ""),
-                    "uploader":    info.get("uploader",    "Unknown"),
-                }
-            except Exception as e:
-                print(f"[Music] {client} failed: {e}")
-                continue
-
-    print("[Music] All clients failed")
-    return None
+    opts = _build_yt_opts({"extractor_args": {"youtube": {"player_client": ["tv_embedded", "ios", "web"]}}})
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        try:
+            info = ydl.extract_info(query, download=False)
+            if "entries" in info:
+                info = info["entries"][0]
+            if not info.get("url"):
+                return None
+            print(f"[Music] ✅ Got stream")
+            return {
+                "title":       info.get("title",       "Unknown"),
+                "url":         info["url"],
+                "webpage_url": info.get("webpage_url", ""),
+                "duration":    info.get("duration",    0),
+                "thumbnail":   info.get("thumbnail",   ""),
+                "uploader":    info.get("uploader",    "Unknown"),
+            }
+        except Exception as e:
+            print(f"[Music] fetch failed: {e}")
+            return None
 
 
 def _yt_search_sync(query: str, limit: int) -> list[dict]:
