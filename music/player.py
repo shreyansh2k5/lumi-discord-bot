@@ -4,56 +4,8 @@ import os
 import shutil
 from collections import deque
 import discord
+from music.ytdl import FFMPEG_OPTIONS
 
-
-# ── Resolve FFmpeg at runtime ─────────────────────────────────────
-
-def _get_ffmpeg() -> str:
-    # 1. static-ffmpeg package
-    try:
-        import static_ffmpeg
-        static_ffmpeg.add_paths()
-        f = shutil.which("ffmpeg")
-        if f:
-            print(f"[Music] FFmpeg from static-ffmpeg: {f}")
-            return f
-    except ImportError:
-        pass
-    # 2. Common system paths (Railway / Linux)
-    for p in ["/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg",
-              "/nix/var/nix/profiles/default/bin/ffmpeg",
-              "/root/.nix-profile/bin/ffmpeg"]:
-        if os.path.exists(p):
-            print(f"[Music] FFmpeg at: {p}")
-            return p
-    # 3. Walk nix store (Railway nixpacks puts it here)
-    try:
-        import glob
-        matches = glob.glob("/nix/store/*/bin/ffmpeg")
-        if matches:
-            print(f"[Music] FFmpeg in nix store: {matches[0]}")
-            return matches[0]
-    except Exception:
-        pass
-    # 4. Local Windows dev
-    from pathlib import Path
-    local = Path(__file__).parent.parent / "ffmpeg.exe"
-    if local.exists():
-        return str(local)
-    print("[Music] ⚠️ FFmpeg not found!")
-    return "ffmpeg"
-
-
-_FFMPEG = _get_ffmpeg()
-
-FFMPEG_OPTIONS = {
-    "executable":     _FFMPEG,
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-    "options":        "-vn",
-}
-
-
-# ── Guild player ──────────────────────────────────────────────────
 
 class GuildPlayer:
     def __init__(self, vc: discord.VoiceClient):

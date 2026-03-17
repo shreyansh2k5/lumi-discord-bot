@@ -1,7 +1,4 @@
 # music/ytdl.py
-# Uses pytubefix (Innertube API) for YouTube — no cookies, no bot detection.
-# Falls back to yt-dlp for non-YouTube URLs (SoundCloud etc).
-
 import asyncio
 import os
 import shutil
@@ -9,30 +6,27 @@ from pathlib import Path
 
 _ROOT = Path(__file__).parent.parent.resolve()
 
-
-# ── FFmpeg path ───────────────────────────────────────────────────
-# Call static_ffmpeg.add_paths() FIRST so it registers before we search
-
-try:
-    import static_ffmpeg
-    static_ffmpeg.add_paths()
-    print("[Music] static-ffmpeg loaded")
-except ImportError:
-    pass
+# ── FFmpeg ────────────────────────────────────────────────────────
 
 def _find_ffmpeg() -> str:
-    # 1. Next to main.py (local Windows dev)
+    # 1. Local Windows dev — ffmpeg.exe next to main.py
     local = _ROOT / "ffmpeg.exe"
     if local.exists():
         return str(local)
-    # 2. System PATH (includes static-ffmpeg path after add_paths())
+    # 2. System PATH (Railway nix puts it here after nixpacks installs it)
     found = shutil.which("ffmpeg")
     if found:
         return found
-    # 3. Nix store (Railway)
-    nix = "/nix/var/nix/profiles/default/bin/ffmpeg"
-    if os.path.exists(nix):
-        return nix
+    # 3. Walk nix store directly (Railway)
+    try:
+        import glob
+        matches = glob.glob("/nix/store/*/bin/ffmpeg")
+        if matches:
+            print(f"[Music] FFmpeg in nix store: {matches[0]}")
+            return matches[0]
+    except Exception:
+        pass
+    print("[Music] ⚠️ FFmpeg not found!")
     return "ffmpeg"
 
 FFMPEG_EXECUTABLE = _find_ffmpeg()
@@ -44,12 +38,10 @@ FFMPEG_OPTIONS = {
     "options":        "-vn",
 }
 
-
 # ── Helpers ───────────────────────────────────────────────────────
 
 def _is_youtube(query: str) -> bool:
     return any(x in query for x in ("youtube.com", "youtu.be", "music.youtube.com"))
-
 
 def format_duration(seconds: int) -> str:
     if not seconds:
@@ -58,12 +50,31 @@ def format_duration(seconds: int) -> str:
     m, s   = divmod(rem, 60)
     return f"{h}:{m:02}:{s:02}" if h else f"{m}:{s:02}"
 
+# ── Cookie helper ─────────────────────────────────────────────────
 
-# ── YouTube via pytubefix (Innertube) ─────────────────────────────
-
-def _build_yt_opts(extra: dict = {}) -> dict:
-    """Build yt-dlp options, injecting cookies from file or env variable."""
+def _get_cookie_opts() -> dict:
     import tempfile
+    # 1. cookies.txt file next to main.py
+    cookies_file = _ROOT / "cookies.txt"
+    if cookies_file.exists():
+        print("[Music] Using cookies.txt")
+        return {"cookiefile": str(cookies_file)}
+    # 2. YT_COOKIES env var (set in Railway dashboard)
+    cookies_env = os.getenv("YT_COOKIES", "")
+    if cookies_env:
+        newline = chr(10)
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
+        tmp.write(cookies_env.replace("\\n", newline))
+        tmp.flush()
+        print("[Music] Using YT_COOKIES env var")
+        return {"cookiefile": tmp.name}
+    print("[Music] ⚠️ No cookies — may be blocked on Railway IP")
+    return {}
+
+# ── YouTube fetch ─────────────────────────────────────────────────
+
+def _yt_fetch_sync(query: str) -> dict | None:
+    import yt_dlp
     opts = {
         "format":         "bestaudio/best",
         "noplaylist":     True,
@@ -72,28 +83,9 @@ def _build_yt_opts(extra: dict = {}) -> dict:
         "default_search": "ytsearch",
         "source_address": "0.0.0.0",
         "extract_flat":   False,
-        **extra,
+        "extractor_args": {"youtube": {"player_client": ["tv_embedded", "ios", "web"]}},
+        **_get_cookie_opts(),
     }
-    # 1. cookies.txt file next to main.py
-    cookies_file = _ROOT / "cookies.txt"
-    if cookies_file.exists():
-        opts["cookiefile"] = str(cookies_file)
-        return opts
-    # 2. YT_COOKIES env variable (multiline cookie content stored in Railway vars)
-    cookies_env = os.getenv("YT_COOKIES", "")
-    if cookies_env:
-        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False)
-        tmp.write(cookies_env.replace("\n", ""))
-        tmp.flush()
-        opts["cookiefile"] = tmp.name
-        return opts
-    return opts
-
-
-def _yt_fetch_sync(query: str) -> dict | None:
-    """Fetch YouTube audio using yt-dlp with cookies."""
-    import yt_dlp
-    opts = _build_yt_opts({"extractor_args": {"youtube": {"player_client": ["tv_embedded", "ios", "web"]}}})
     with yt_dlp.YoutubeDL(opts) as ydl:
         try:
             info = ydl.extract_info(query, download=False)
@@ -101,7 +93,6 @@ def _yt_fetch_sync(query: str) -> dict | None:
                 info = info["entries"][0]
             if not info.get("url"):
                 return None
-            print(f"[Music] ✅ Got stream")
             return {
                 "title":       info.get("title",       "Unknown"),
                 "url":         info["url"],
@@ -114,9 +105,9 @@ def _yt_fetch_sync(query: str) -> dict | None:
             print(f"[Music] fetch failed: {e}")
             return None
 
+# ── Search ────────────────────────────────────────────────────────
 
 def _yt_search_sync(query: str, limit: int) -> list[dict]:
-    """Search YouTube using yt-dlp flat extract — no bot detection on metadata."""
     import yt_dlp
     opts = {
         "quiet":          True,
@@ -140,7 +131,6 @@ def _yt_search_sync(query: str, limit: int) -> list[dict]:
         except Exception as e:
             print(f"[Music] search error: {e}")
             return []
-
 
 # ── yt-dlp fallback for non-YouTube ──────────────────────────────
 
@@ -171,19 +161,15 @@ def _ytdlp_fetch_sync(query: str) -> dict | None:
         except Exception:
             return None
 
-
 # ── Public async API ──────────────────────────────────────────────
 
 async def fetch_track(query: str) -> dict | None:
-    """Fetch a single track. Uses tv_embedded yt-dlp for YouTube, fallback for others."""
     loop = asyncio.get_event_loop()
     if _is_youtube(query) or not query.startswith("http"):
         return await loop.run_in_executor(None, _yt_fetch_sync, query)
     else:
         return await loop.run_in_executor(None, _ytdlp_fetch_sync, query)
 
-
 async def search_tracks(query: str, limit: int = 5) -> list[dict]:
-    """Search YouTube and return flat results for the dropdown."""
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, _yt_search_sync, query, limit)
