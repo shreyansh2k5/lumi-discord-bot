@@ -77,6 +77,7 @@ def _yt_fetch_sync(query: str) -> dict | None:
     import yt_dlp
     opts = {
         "format":         "bestaudio/best",
+        "format_sort":    ["abr", "asr"],
         "noplaylist":     True,
         "quiet":          True,
         "no_warnings":    True,
