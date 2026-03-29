@@ -1,27 +1,24 @@
 # music/player.py
 import random
-import os
-import shutil
 from collections import deque
 import discord
 from music.ytdl import FFMPEG_OPTIONS
 
-
 class GuildPlayer:
     def __init__(self, vc: discord.VoiceClient):
-        self.vc      = vc
-        self.queue   = deque()
-        self.current = None
-        self.loop    = False
-        self.volume  = 1.0
-        self.np_msg  = None
+        self.vc       = vc
+        self.queue    = deque()
+        self.current  = None
+        self.loop     = False
+        self.volume   = 1.0
+        self.np_msg   = None
 
     @property
-    def paused(self):     return self.vc.is_paused()
+    def paused(self):      return self.vc.is_paused()
     @property
-    def playing(self):    return self.vc.is_playing()
+    def playing(self):     return self.vc.is_playing()
     @property
-    def volume_pct(self): return int(self.volume * 100)
+    def volume_pct(self):  return int(self.volume * 100)
 
     def play_next(self, after=None):
         if self.loop and self.current:
@@ -61,6 +58,7 @@ _players: dict[int, GuildPlayer] = {}
 
 def get_player(gid):    return _players.get(gid)
 def remove_player(gid): _players.pop(gid, None)
+
 def create_player(gid, vc):
     p = GuildPlayer(vc)
     _players[gid] = p
