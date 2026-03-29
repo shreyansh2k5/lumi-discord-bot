@@ -202,14 +202,19 @@ class Music(commands.Cog):
             print("[Music] ⚠️ All nodes failed. Retrying in 60s...")
             await asyncio.sleep(60)
 
-    async def _get_player(self, guild, vc_channel) -> wavelink.Player:
+    async def _get_player(self, guild, vc_channel) -> wavelink.Player | None:
         player: wavelink.Player = guild.voice_client
-        if not player:
-            player = await vc_channel.connect(cls=wavelink.Player, self_deaf=True)
-            player.autoplay = wavelink.AutoPlayMode.disabled
-        elif player.channel != vc_channel:
-            await player.move_to(vc_channel)
-        return player
+        try:
+            if not player:
+                player = await vc_channel.connect(
+                    cls=wavelink.Player, self_deaf=True, timeout=60.0)
+                player.autoplay = wavelink.AutoPlayMode.disabled
+            elif player.channel != vc_channel:
+                await player.move_to(vc_channel)
+            return player
+        except Exception as e:
+            print(f"[Music] Voice connect failed: {e}")
+            return None
 
     async def _send_np(self, guild_id: int, player: wavelink.Player, channel: discord.TextChannel):
         old = self.np_msgs.get(guild_id)
@@ -224,6 +229,8 @@ class Music(commands.Cog):
         player   = await self._get_player(guild, vc_channel)
         guild_id = guild.id
 
+        if player is None:
+            raise Exception("Could not connect to voice channel")
         if player.playing or player.paused:
             await player.queue.put_wait(track)
             pos   = len(player.queue)
@@ -314,7 +321,12 @@ class Music(commands.Cog):
 
         track = tracks[0]
         track.extras = wavelink.ExtrasNamespace({"requester": ctx.author.display_name})
-        await self._queue_or_play(ctx.guild, ctx.author.voice.channel, ctx.channel, track)
+        try:
+            await self._queue_or_play(ctx.guild, ctx.author.voice.channel, ctx.channel, track)
+        except Exception as e:
+            print(f"[Music] play error: {e}")
+            await ctx.send(embed=discord.Embed(
+                description="❌ Failed to connect to voice channel. Try again!", color=discord.Color.red()))
 
     @commands.command(name="skip", aliases=["s"])
     async def skip(self, ctx: commands.Context):
