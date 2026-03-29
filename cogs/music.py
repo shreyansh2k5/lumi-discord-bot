@@ -1,4 +1,5 @@
-# cogs/music.py — Lavalink via wavelink, local server + public fallbacks
+# cogs/music.py — wavelink + Lavalink + LavaSrc (Spotify/Deezer/SoundCloud)
+# YouTube disabled — all searches route through Deezer/SoundCloud via LavaSrc
 import asyncio
 import discord
 from discord import app_commands
@@ -11,7 +12,6 @@ from core.embeds  import PINK
 
 
 def _connected_node() -> wavelink.Node | None:
-    """Returns the first connected node, or None."""
     try:
         for node in wavelink.Pool.nodes.values():
             if node.status == wavelink.NodeStatus.CONNECTED:
@@ -19,6 +19,20 @@ def _connected_node() -> wavelink.Node | None:
     except Exception:
         pass
     return None
+
+
+def _build_search_query(query: str) -> str:
+    """
+    Routes search query to the right source:
+    - Spotify URL  → pass through as-is (LavaSrc handles it)
+    - SoundCloud URL → pass through as-is
+    - HTTP URL     → pass through as-is
+    - Plain text   → prefix with dzsearch: (Deezer) with scsearch: fallback
+    """
+    if query.startswith("http"):
+        return query  # URLs pass through directly
+    # Plain text search → Deezer first (highest quality), SoundCloud as fallback
+    return f"dzsearch:{query}"
 
 
 # ── Control view ──────────────────────────────────────────────────
@@ -130,7 +144,7 @@ class MusicControlView(discord.ui.View):
         await self._refresh(interaction)
 
 
-# ── Search ────────────────────────────────────────────────────────
+# ── Search dropdown ───────────────────────────────────────────────
 
 class SearchSelect(discord.ui.Select):
     def __init__(self, cog, tracks: list, requester: str):
@@ -140,7 +154,7 @@ class SearchSelect(discord.ui.Select):
         options = [
             discord.SelectOption(
                 label=t.title[:100],
-                description=f"{format_duration(t.length)} · {t.author[:40]}"[:100],
+                description=f"{format_duration(t.length)} · {getattr(t, 'author', 'Unknown')[:40]}"[:100],
                 value=str(i)
             ) for i, t in enumerate(tracks)
         ]
@@ -175,21 +189,14 @@ class Music(commands.Cog):
         asyncio.create_task(self._connect_nodes())
 
     async def _connect_nodes(self):
-        """
-        Tries every node in order.
-        Stops at the first successful connection.
-        Retries all nodes every 60s if all fail.
-        """
         await self.bot.wait_until_ready()
         while True:
             for n in LAVALINK_NODES:
                 try:
-                    # Skip if already connected to this node
                     existing = wavelink.Pool.nodes.get(n.get("name", n["uri"]))
                     if existing and existing.status == wavelink.NodeStatus.CONNECTED:
                         print(f"[Music] Already connected to {n['uri']}")
                         return
-
                     node = wavelink.Node(uri=n["uri"], password=n["password"])
                     await wavelink.Pool.connect(
                         nodes=[node], client=self.bot, cache_capacity=100)
@@ -198,7 +205,6 @@ class Music(commands.Cog):
                 except Exception as e:
                     print(f"[Music] ❌ {n['uri']} — {e}")
                     continue
-
             print("[Music] ⚠️ All nodes failed. Retrying in 60s...")
             await asyncio.sleep(60)
 
@@ -226,11 +232,11 @@ class Music(commands.Cog):
         self.np_msgs[guild_id] = await channel.send(embed=embed, view=view)
 
     async def _queue_or_play(self, guild, vc_channel, channel, track):
-        player   = await self._get_player(guild, vc_channel)
-        guild_id = guild.id
-
+        player = await self._get_player(guild, vc_channel)
         if player is None:
             raise Exception("Could not connect to voice channel")
+        guild_id = guild.id
+
         if player.playing or player.paused:
             await player.queue.put_wait(track)
             pos   = len(player.queue)
@@ -258,8 +264,7 @@ class Music(commands.Cog):
     @commands.Cog.listener()
     async def on_wavelink_track_end(self, payload: wavelink.TrackEndEventPayload):
         player = payload.player
-        if not player:
-            return
+        if not player: return
         guild_id = player.guild.id
         np       = self.np_msgs.get(guild_id)
         channel  = np.channel if np else None
@@ -275,8 +280,7 @@ class Music(commands.Cog):
                     await np.edit(
                         embed=discord.Embed(description="✅ Queue finished!", color=PINK),
                         view=None)
-                except Exception:
-                    pass
+                except Exception: pass
             self.np_msgs.pop(guild_id, None)
             await asyncio.sleep(2)
             try: await player.disconnect()
@@ -284,21 +288,28 @@ class Music(commands.Cog):
 
     @commands.Cog.listener()
     async def on_wavelink_inactive_player(self, player: wavelink.Player):
-        """Disconnect after inactivity."""
         try: await player.disconnect()
         except Exception: pass
 
     # ── Commands ──────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="play", description="Play a song from YouTube 🎵")
-    @app_commands.describe(query="Song name or YouTube URL")
+    @commands.hybrid_command(name="play", description="Play a song 🎵")
+    @app_commands.describe(query="Song name, Spotify URL, or SoundCloud URL")
     async def play(self, ctx: commands.Context, *, query: str = None):
         if not query:
             embed = discord.Embed(title="🎵  Lumi Music — Commands", color=PINK)
-            embed.add_field(name="▶️  Play",     value="`$play <song/URL>`\n`$search <query>`", inline=False)
-            embed.add_field(name="⏯️  Controls", value="`$skip` `$pause` `$resume` `$remove`",  inline=False)
-            embed.add_field(name="🎛️  Buttons",  value="⏮ 🔁 ⏸ 🔀 ⏭ · 📋 🔉 ⏹ 🔊",           inline=False)
-            embed.set_footer(text="Example: $play never gonna give you up")
+            embed.add_field(name="▶️  Play",
+                value="`$play <song name>` — searches Deezer\n"
+                      "`$play <spotify URL>` — plays Spotify link\n"
+                      "`$play <soundcloud URL>` — plays SoundCloud link\n"
+                      "`$search <query>` — pick from 5 results",
+                inline=False)
+            embed.add_field(name="⏯️  Controls", value="`$skip` `$pause` `$resume` `$remove`", inline=False)
+            embed.add_field(name="🎛️  Buttons",  value="⏮ 🔁 ⏸ 🔀 ⏭ · 📋 🔉 ⏹ 🔊", inline=False)
+            embed.add_field(name="💡  Sources",
+                value="🎵 Deezer (text search)\n🎧 SoundCloud\n💚 Spotify URLs",
+                inline=False)
+            embed.set_footer(text="Example: $play starboy weeknd")
             return await ctx.send(embed=embed)
 
         if not ctx.author.voice:
@@ -314,19 +325,29 @@ class Music(commands.Cog):
             try: await ctx.message.delete()
             except Exception: pass
 
-        tracks = await wavelink.Playable.search(query)
+        search_query = _build_search_query(query)
+        tracks = await wavelink.Playable.search(search_query)
+
+        # Fallback to SoundCloud if Deezer returns nothing
+        if not tracks and not query.startswith("http"):
+            print(f"[Music] Deezer returned no results, trying SoundCloud...")
+            tracks = await wavelink.Playable.search(f"scsearch:{query}")
+
         if not tracks:
             return await ctx.send(embed=discord.Embed(
-                description="❌ No results found!", color=discord.Color.red()))
+                description="❌ No results found! Try a different search or paste a Spotify/SoundCloud URL.",
+                color=discord.Color.red()))
 
         track = tracks[0]
         track.extras = wavelink.ExtrasNamespace({"requester": ctx.author.display_name})
+
         try:
             await self._queue_or_play(ctx.guild, ctx.author.voice.channel, ctx.channel, track)
         except Exception as e:
             print(f"[Music] play error: {e}")
             await ctx.send(embed=discord.Embed(
-                description="❌ Failed to connect to voice channel. Try again!", color=discord.Color.red()))
+                description="❌ Failed to connect to voice channel. Try again!",
+                color=discord.Color.red()))
 
     @commands.command(name="skip", aliases=["s"])
     async def skip(self, ctx: commands.Context):
@@ -364,7 +385,8 @@ class Music(commands.Cog):
         target = len(q) - 1 if index == -1 else index - 1
         if target < 0 or target >= len(q):
             return await ctx.send(embed=discord.Embed(
-                description=f"❌ Invalid. Queue has {len(q)} song(s).", color=discord.Color.red()), delete_after=5)
+                description=f"❌ Invalid. Queue has {len(q)} song(s).",
+                color=discord.Color.red()), delete_after=5)
         removed = q.pop(target)
         p.queue.clear()
         for t in q:
@@ -381,19 +403,28 @@ class Music(commands.Cog):
                 description="❌ Join a voice channel first!", color=discord.Color.red()), delete_after=5)
         if not _connected_node():
             return await ctx.send(embed=discord.Embed(
-                description="⏳ Music service connecting, try again in a moment!", color=discord.Color.orange()))
+                description="⏳ Music service connecting, try again in a moment!",
+                color=discord.Color.orange()))
         try: await ctx.message.delete()
         except Exception: pass
+
         msg = await ctx.send(embed=discord.Embed(
             description=f"🔍 Searching **{query}**...", color=PINK))
-        tracks = await wavelink.Playable.search(query)
+
+        # Search Deezer first, fall back to SoundCloud
+        tracks = await wavelink.Playable.search(f"dzsearch:{query}")
+        if not tracks:
+            tracks = await wavelink.Playable.search(f"scsearch:{query}")
+
         if not tracks:
             return await msg.edit(embed=discord.Embed(
                 description="❌ No results found.", color=discord.Color.red()))
+
         results = tracks[:5]
         lines   = [f"`{i}.` **{t.title[:60]}** · {format_duration(t.length)}"
                    for i, t in enumerate(results, 1)]
-        embed   = discord.Embed(title=f"🔍  \"{query}\"", description="\n".join(lines), color=PINK)
+        embed   = discord.Embed(
+            title=f"🔍  \"{query}\"", description="\n".join(lines), color=PINK)
         embed.set_footer(text="Pick a song below • 30s to choose")
         await msg.edit(embed=embed, view=SearchView(self, results, ctx.author.display_name))
 
