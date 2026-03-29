@@ -1,26 +1,44 @@
 # music/embeds.py
 import discord
+import wavelink
 from core.embeds import PINK
-from music.ytdl import format_duration
 
 
-def build_np_embed(track: dict, queue_len: int = 0, paused: bool = False, loop: bool = False, volume: int = 100) -> discord.Embed:
+def format_duration(ms: int) -> str:
+    if not ms:
+        return "Live"
+    s = ms // 1000
+    h, rem = divmod(s, 3600)
+    m, sec = divmod(rem, 60)
+    return f"{h}:{m:02}:{sec:02}" if h else f"{m}:{sec:02}"
+
+
+def build_np_embed(player: wavelink.Player) -> discord.Embed:
+    t = player.current
+    if not t:
+        return discord.Embed(description="Nothing playing.", color=PINK)
+
     embed = discord.Embed(
         title="🎵  Now Playing",
-        description=f"**[{track['title']}]({track['webpage_url']})**",
+        description=f"**[{t.title}]({t.uri})**",
         color=PINK
     )
-    embed.add_field(name="⏱ Duration",  value=format_duration(track.get("duration", 0)), inline=True)
-    embed.add_field(name="👤 Requester", value=track.get("requester", "Unknown"),         inline=True)
-    embed.add_field(name="🔊 Volume",    value=f"{volume}%",                               inline=True)
+    embed.add_field(name="⏱ Duration",
+                    value=format_duration(t.length), inline=True)
+    embed.add_field(name="👤 Requester",
+                    value=getattr(getattr(t, "extras", None), "requester", "Unknown"), inline=True)
+    embed.add_field(name="🔊 Volume",
+                    value=f"{player.volume}%", inline=True)
 
     status = []
-    if paused:  status.append("⏸ Paused")
-    if loop:    status.append("🔁 Loop")
-    status.append(f"📋 Queue: {queue_len}")
+    if player.paused:
+        status.append("⏸ Paused")
+    if player.queue.mode == wavelink.QueueMode.loop:
+        status.append("🔁 Loop")
+    status.append(f"📋 Queue: {len(player.queue)}")
     embed.add_field(name="Status", value=" · ".join(status), inline=False)
 
-    if track.get("thumbnail"):
-        embed.set_thumbnail(url=track["thumbnail"])
+    if t.artwork:
+        embed.set_thumbnail(url=t.artwork)
     embed.set_footer(text="Lumi Music 🎶  •  Use the buttons to control playback")
     return embed
