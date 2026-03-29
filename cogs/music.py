@@ -276,9 +276,10 @@ class Music(commands.Cog):
             except Exception: pass
 
     @commands.Cog.listener()
-    async def on_wavelink_node_closed(self, payload: wavelink.NodeClosedEventPayload):
-        print(f"[Music] ⚠️ Node disconnected: {payload.node.uri} — attempting reconnect...")
-        asyncio.create_task(self._connect_nodes())
+    async def on_wavelink_inactive_player(self, player: wavelink.Player):
+        """Disconnect after inactivity."""
+        try: await player.disconnect()
+        except Exception: pass
 
     # ── Commands ──────────────────────────────────────────────────
 
