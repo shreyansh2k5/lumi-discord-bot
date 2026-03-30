@@ -321,20 +321,28 @@ class Music(commands.Cog):
             try: await ctx.message.delete()
             except Exception: pass
 
-        search_query = _build_search_query(query)
-        tracks = await wavelink.Playable.search(search_query)
+        # FIX: Check if it's a URL first. If not, explicitly force LavaSrc Spotify.
+        if query.startswith("http"):
+             tracks = await wavelink.Playable.search(query)
+        else:
+             # We use the raw search method to prevent Wavelink from adding ytmsearch:
+             tracks = await wavelink.Pool.fetch_tracks(f"spsearch:{query}")
 
-        # Fallback to SoundCloud if Spotify search yields no results
-        if not tracks and search_query.startswith("spsearch:"):
+        if not tracks:
             print("[Music] Spotify returned no results, trying SoundCloud...")
-            tracks = await wavelink.Playable.search(f"scsearch:{query}")
+            tracks = await wavelink.Pool.fetch_tracks(f"scsearch:{query}")
 
         if not tracks:
             return await ctx.send(embed=discord.Embed(
                 description="❌ No results found! Try a different search or paste a Spotify/SoundCloud URL.",
                 color=discord.Color.red()))
 
-        track = tracks[0]
+        # For Wavelink v3, fetch_tracks returns a list or a Playlist object
+        if isinstance(tracks, wavelink.Playlist):
+            track = tracks.tracks[0]
+        else:
+            track = tracks[0]
+            
         track.extras = wavelink.ExtrasNamespace({"requester": ctx.author.display_name})
 
         try:
@@ -407,16 +415,21 @@ class Music(commands.Cog):
         msg = await ctx.send(embed=discord.Embed(
             description=f"🔍 Searching **{query}**...", color=PINK))
 
-        # Search Spotify first for metadata, fallback to SoundCloud
-        tracks = await wavelink.Playable.search(f"spsearch:{query}")
+        # FIX: Explicitly set the source so Wavelink doesn't force YouTube!
+        tracks = await wavelink.Playable.search(query, source="spsearch")
         if not tracks:
-            tracks = await wavelink.Playable.search(f"scsearch:{query}")
+            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.SoundCloud)
 
         if not tracks:
             return await msg.edit(embed=discord.Embed(
                 description="❌ No results found.", color=discord.Color.red()))
 
-        results = tracks[:5]
+        # FIX: Safely handle if Wavelink returns a Playlist object
+        if isinstance(tracks, wavelink.Playlist):
+            results = tracks.tracks[:5]
+        else:
+            results = tracks[:5]
+
         lines   = [f"`{i}.` **{t.title[:60]}** · {format_duration(t.length)}"
                    for i, t in enumerate(results, 1)]
         embed   = discord.Embed(
