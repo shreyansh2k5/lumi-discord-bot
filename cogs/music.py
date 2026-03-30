@@ -322,22 +322,19 @@ class Music(commands.Cog):
             except Exception: pass
 
         # FIX: Check if it's a URL first. If not, explicitly force LavaSrc Spotify.
+       # Check if it's a URL first.
         if query.startswith("http"):
              tracks = await wavelink.Playable.search(query)
         else:
-             # We use the raw search method to prevent Wavelink from adding ytmsearch:
-             tracks = await wavelink.Pool.fetch_tracks(f"spsearch:{query}")
-
-        if not tracks:
-            print("[Music] Spotify returned no results, trying SoundCloud...")
-            tracks = await wavelink.Pool.fetch_tracks(f"scsearch:{query}")
+             # Force Wavelink to search SoundCloud directly!
+             tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.SoundCloud)
 
         if not tracks:
             return await ctx.send(embed=discord.Embed(
-                description="❌ No results found! Try a different search or paste a Spotify/SoundCloud URL.",
+                description="❌ No results found! Try a different search or paste a URL.",
                 color=discord.Color.red()))
 
-        # For Wavelink v3, fetch_tracks returns a list or a Playlist object
+        # For Wavelink v3, fetch_tracks/search returns a list or a Playlist object
         if isinstance(tracks, wavelink.Playlist):
             track = tracks.tracks[0]
         else:
@@ -415,16 +412,14 @@ class Music(commands.Cog):
         msg = await ctx.send(embed=discord.Embed(
             description=f"🔍 Searching **{query}**...", color=PINK))
 
-        # FIX: Explicitly set the source so Wavelink doesn't force YouTube!
-        tracks = await wavelink.Playable.search(query, source="spsearch")
-        if not tracks:
-            tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.SoundCloud)
+        # Force Wavelink to search SoundCloud directly!
+        tracks = await wavelink.Playable.search(query, source=wavelink.TrackSource.SoundCloud)
 
         if not tracks:
             return await msg.edit(embed=discord.Embed(
                 description="❌ No results found.", color=discord.Color.red()))
 
-        # FIX: Safely handle if Wavelink returns a Playlist object
+        # Safely handle if Wavelink returns a Playlist object
         if isinstance(tracks, wavelink.Playlist):
             results = tracks.tracks[:5]
         else:
