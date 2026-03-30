@@ -39,15 +39,18 @@ class YTDLSource(discord.PCMVolumeTransformer):
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=True):
         loop = loop or asyncio.get_event_loop()
+        
+        # FIX: We only pass url and download. No 'before' or 'options' here!
         data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
 
         if 'entries' in data:
-            # Take first item from a playlist
+            # take first item from a playlist
             data = data['entries'][0]
 
         filename = data['url'] if stream else ytdl.prepare_filename(data)
+        
+        # FFmpeg options are applied here instead
         return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
-
 
 class MusicQueue:
     def __init__(self):
