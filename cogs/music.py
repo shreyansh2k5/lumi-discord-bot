@@ -332,34 +332,41 @@ class Music(commands.Cog):
 
     # ── Commands ──────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="play", description="Play a song 🎵")
-    @app_commands.describe(query="Song name or URL")
-    async def play(self, ctx: commands.Context, *, query: str = None):
-        if not query:
-            embed = discord.Embed(title="🎵  Lumi Music — Commands", color=PINK)
-            embed.add_field(name="▶️  Play",     value="`$play <song name>` — SoundCloud search\n`$play <URL>` — direct URL\n`$search <query>` — pick from 5 results", inline=False)
-            embed.add_field(name="⏯️  Controls", value="`$skip` `$pause` `$resume` `$stop` `$remove`", inline=False)
-            embed.add_field(name="🎛️  Buttons",  value="⏮ 🔁 ⏸ 🔀 ⏭ · 📋 🔉 ⏹ 🔊", inline=False)
-            embed.set_footer(text="Example: $play starboy weeknd")
-            return await ctx.send(embed=embed)
-
+    @commands.hybrid_command(name="play", description="Play a song from SoundCloud")
+    async def play(self, ctx, *, query: str):
         if not ctx.author.voice:
-            return await ctx.send(embed=discord.Embed(
-                description="❌ Join a voice channel first!", color=discord.Color.red()), ephemeral=True)
+            return await ctx.send("❌ You need to join a voice channel first!", ephemeral=True)
+
+        voice_client = ctx.voice_client
+        if not voice_client:
+            voice_client = await ctx.author.voice.channel.connect()
 
         await ctx.typing()
-        if ctx.interaction is None:
-            try: await ctx.message.delete()
-            except Exception: pass
 
         try:
-            src = await YTDLSource.from_query(query, loop=self.bot.loop)
-        except Exception as e:
-            return await ctx.send(embed=discord.Embed(
-                description=f"❌ Failed to load: `{e}`", color=discord.Color.red()))
+            # Check if we need to search or if it's a direct URL
+            if not query.startswith("http"):
+                search_query = f"scsearch1:{query}" # Force only 1 result from SoundCloud
+            else:
+                search_query = query
 
-        src.requester = ctx.author.display_name
-        await self._queue_or_play(ctx.guild, ctx.author.voice.channel, ctx.channel, src)
+            player = await YTDLSource.from_url(search_query, loop=self.bot.loop, stream=True)
+        except Exception as e:
+            return await ctx.send(f"❌ An error occurred during playback: {e}")
+
+        m_queue = self.get_queue(ctx.guild.id)
+        
+        if voice_client.is_playing() or voice_client.is_paused():
+            m_queue.queue.append({'player': player, 'title': player.title})
+            await ctx.send(embed=discord.Embed(
+                description=f"📋 Added to queue: **{player.title}**", 
+                color=self.PINK))
+        else:
+            m_queue.current = {'player': player, 'title': player.title}
+            voice_client.play(player, after=lambda e: self.play_next(ctx))
+            await ctx.send(embed=discord.Embed(
+                description=f"🎶 Now playing: **{player.title}**", 
+                color=self.PINK))
 
     @commands.command(name="skip", aliases=["s"])
     async def skip(self, ctx: commands.Context):
