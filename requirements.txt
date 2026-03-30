@@ -4,4 +4,4 @@ aiohttp
 firebase-admin
 google-cloud-firestore>=2.0.0
 PyNaCl
-wavelink
+yt-dlp
