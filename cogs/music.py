@@ -1,5 +1,5 @@
-# cogs/music.py — wavelink + Lavalink + LavaSrc (Spotify/Deezer/SoundCloud)
-# YouTube disabled — all searches route through Deezer/SoundCloud via LavaSrc
+# cogs/music.py — wavelink + Lavalink + LavaSrc (Spotify/SoundCloud)
+# YouTube and Deezer disabled — routing through Spotify metadata and SoundCloud audio
 import asyncio
 import discord
 from discord import app_commands
@@ -24,15 +24,12 @@ def _connected_node() -> wavelink.Node | None:
 def _build_search_query(query: str) -> str:
     """
     Routes search query to the right source:
-    - Spotify URL  → pass through as-is (LavaSrc handles it)
-    - SoundCloud URL → pass through as-is
-    - HTTP URL     → pass through as-is
-    - Plain text   → prefix with dzsearch: (Deezer) with scsearch: fallback
+    - URLs (Spotify/SoundCloud) → pass through as-is
+    - Plain text → prefix with spsearch: (Spotify) for rich metadata
     """
     if query.startswith("http"):
-        return query  # URLs pass through directly
-    # Plain text search → Deezer first (highest quality), SoundCloud as fallback
-    return f"dzsearch:{query}"
+        return query
+    return f"spsearch:{query}"
 
 
 # ── Control view ──────────────────────────────────────────────────
@@ -195,7 +192,6 @@ class Music(commands.Cog):
                 try:
                     existing = wavelink.Pool.nodes.get(n.get("name", n["uri"]))
                     if existing and existing.status == wavelink.NodeStatus.CONNECTED:
-                        print(f"[Music] Already connected to {n['uri']}")
                         return
                     node = wavelink.Node(uri=n["uri"], password=n["password"])
                     await wavelink.Pool.connect(
@@ -297,9 +293,9 @@ class Music(commands.Cog):
     @app_commands.describe(query="Song name, Spotify URL, or SoundCloud URL")
     async def play(self, ctx: commands.Context, *, query: str = None):
         if not query:
-            embed = discord.Embed(title="🎵  Lumi Music — Commands", color=PINK)
+            embed = discord.Embed(title="🎵  Lumi Music", color=PINK)
             embed.add_field(name="▶️  Play",
-                value="`$play <song name>` — searches Deezer\n"
+                value="`$play <song name>` — searches Spotify\n"
                       "`$play <spotify URL>` — plays Spotify link\n"
                       "`$play <soundcloud URL>` — plays SoundCloud link\n"
                       "`$search <query>` — pick from 5 results",
@@ -307,7 +303,7 @@ class Music(commands.Cog):
             embed.add_field(name="⏯️  Controls", value="`$skip` `$pause` `$resume` `$remove`", inline=False)
             embed.add_field(name="🎛️  Buttons",  value="⏮ 🔁 ⏸ 🔀 ⏭ · 📋 🔉 ⏹ 🔊", inline=False)
             embed.add_field(name="💡  Sources",
-                value="🎵 Deezer (text search)\n🎧 SoundCloud\n💚 Spotify URLs",
+                value="💚 Spotify (Search & URLs)\n🎧 SoundCloud (Audio Backend)",
                 inline=False)
             embed.set_footer(text="Example: $play starboy weeknd")
             return await ctx.send(embed=embed)
@@ -328,9 +324,9 @@ class Music(commands.Cog):
         search_query = _build_search_query(query)
         tracks = await wavelink.Playable.search(search_query)
 
-        # Fallback to SoundCloud if Deezer returns nothing
-        if not tracks and not query.startswith("http"):
-            print(f"[Music] Deezer returned no results, trying SoundCloud...")
+        # Fallback to SoundCloud if Spotify search yields no results
+        if not tracks and search_query.startswith("spsearch:"):
+            print("[Music] Spotify returned no results, trying SoundCloud...")
             tracks = await wavelink.Playable.search(f"scsearch:{query}")
 
         if not tracks:
@@ -411,8 +407,8 @@ class Music(commands.Cog):
         msg = await ctx.send(embed=discord.Embed(
             description=f"🔍 Searching **{query}**...", color=PINK))
 
-        # Search Deezer first, fall back to SoundCloud
-        tracks = await wavelink.Playable.search(f"dzsearch:{query}")
+        # Search Spotify first for metadata, fallback to SoundCloud
+        tracks = await wavelink.Playable.search(f"spsearch:{query}")
         if not tracks:
             tracks = await wavelink.Playable.search(f"scsearch:{query}")
 
