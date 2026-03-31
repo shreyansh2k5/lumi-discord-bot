@@ -40,23 +40,23 @@ def _fmt(seconds: int) -> str:
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data, volume=1.0):
         super().__init__(source, volume)
-        self.data      = data
-        self.title     = data.get('title', 'Unknown')
-        self.url       = data.get('url', '')
-        self.webpage   = data.get('webpage_url', '')
-        self.duration  = data.get('duration', 0)
-        self.thumbnail = data.get('thumbnail', '')
-        self.uploader  = data.get('uploader', 'Unknown')
-        self.requester = ''
+        self.data = data
+        self.title = data.get('title')
+        self.url = data.get('url')
 
     @classmethod
-    async def from_query(cls, query: str, *, loop=None) -> 'YTDLSource':
+    async def from_url(cls, url, *, loop=None, stream=True):
         loop = loop or asyncio.get_event_loop()
-        data = await loop.run_in_executor(
-            None, lambda: ytdl.extract_info(query, download=False))
+        
+        # This extract_info call must be clean of 'before' arguments
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+
         if 'entries' in data:
+            # take first item from a search result
             data = data['entries'][0]
-        return cls(discord.FFmpegPCMAudio(data['url'], **FFMPEG_OPTIONS), data=data)
+
+        filename = data['url'] if stream else ytdl.prepare_filename(data)
+        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
 
     @classmethod
     async def search_many(cls, query: str, limit: int = 5, *, loop=None) -> list[dict]:
