@@ -21,55 +21,49 @@ YTDL_OPTIONS = {
 ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
 
 
-# ── Utils ─────────────────────────────────────────────
+# ───────────── Utils ─────────────
 
-def _fmt(seconds):
+def fmt_time(seconds):
     if not seconds:
         return "Live"
     m, s = divmod(int(seconds), 60)
     return f"{m}:{s:02}"
 
 
-# ── Audio Source ──────────────────────────────────────
+# ───────────── Audio Source ─────────────
 
 class YTDLSource(discord.PCMVolumeTransformer):
     def __init__(self, source, *, data):
-        super().__init__(source, 1.0)
+        super().__init__(source, volume=1.0)
 
-        self.data = data
-        self.title = data.get('title', 'Unknown')
-        self.url = data.get('url')
-
-        self.webpage = data.get('webpage_url', '')
-        self.duration = data.get('duration', 0)
-        self.thumbnail = data.get('thumbnail')
+        self.title = data.get("title", "Unknown")
+        self.url = data.get("url")
+        self.duration = data.get("duration", 0)
+        self.webpage = data.get("webpage_url", "")
+        self.thumbnail = data.get("thumbnail")
         self.requester = None
 
     @classmethod
-    async def from_url(cls, url, *, loop=None):
-        loop = loop or asyncio.get_event_loop()
-
+    async def from_url(cls, url, *, loop):
         data = await loop.run_in_executor(
             None, lambda: ytdl.extract_info(url, download=False)
         )
 
-        if 'entries' in data:
-            data = data['entries'][0]
-
-        filename = data['url']
+        if "entries" in data:
+            data = data["entries"][0]
 
         return cls(
             discord.FFmpegPCMAudio(
-                filename,
+                data["url"],
                 executable=FFMPEG_PATH,
                 before_options="-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
-                options="-vn -loglevel error"
+                options="-vn -loglevel error",
             ),
-            data=data
+            data=data,
         )
 
 
-# ── Queue ─────────────────────────────────────────────
+# ───────────── Queue ─────────────
 
 class GuildQueue:
     def __init__(self):
@@ -77,38 +71,38 @@ class GuildQueue:
         self.current = None
 
 
-# ── Music Cog ─────────────────────────────────────────
+# ───────────── Music Cog ─────────────
 
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.queues = {}
 
-    def _get_q(self, guild_id):
+    def get_queue(self, guild_id):
         if guild_id not in self.queues:
             self.queues[guild_id] = GuildQueue()
         return self.queues[guild_id]
 
-    # ── SAFE NEXT TRACK ────────────────────────────────
+    # ───────────── Player Engine ─────────────
 
-    async def _advance(self, ctx):
-        q = self._get_q(ctx.guild.id)
+    async def play_next(self, ctx):
+        queue = self.get_queue(ctx.guild.id)
 
-        if not q.queue:
-            q.current = None
+        if not queue.queue:
+            queue.current = None
             if ctx.voice_client:
                 await ctx.voice_client.disconnect()
             return
 
-        next_song = q.queue.pop(0)
-        q.current = next_song
+        next_song = queue.queue.pop(0)
+        queue.current = next_song
 
         ctx.voice_client.play(
             next_song,
             after=lambda e: self.bot.loop.call_soon_threadsafe(
                 asyncio.create_task,
-                self._advance(ctx)
-            )
+                self.play_next(ctx),
+            ),
         )
 
         await ctx.send(embed=discord.Embed(
@@ -116,13 +110,13 @@ class Music(commands.Cog):
             color=PINK
         ))
 
-    # ── PLAY COMMAND ───────────────────────────────────
+    # ───────────── Commands ─────────────
 
     @commands.hybrid_command(name="play")
     async def play(self, ctx, *, query: str):
 
         if not ctx.author.voice:
-            return await ctx.send("❌ Join a voice channel first!")
+            return await ctx.send("❌ Join a voice channel first")
 
         vc = ctx.voice_client
         if not vc:
@@ -140,12 +134,10 @@ class Music(commands.Cog):
         except Exception as e:
             return await ctx.send(f"❌ Error: {e}")
 
-        q = self._get_q(ctx.guild.id)
-
-        # ── QUEUE HANDLING (FIXED) ──────────────────────
+        queue = self.get_queue(ctx.guild.id)
 
         if vc.is_playing() or vc.is_paused():
-            q.queue.append(player)
+            queue.queue.append(player)
 
             await ctx.send(embed=discord.Embed(
                 description=f"📋 Added to queue: **{player.title}**",
@@ -153,14 +145,14 @@ class Music(commands.Cog):
             ))
 
         else:
-            q.current = player
+            queue.current = player
 
             vc.play(
                 player,
                 after=lambda e: self.bot.loop.call_soon_threadsafe(
                     asyncio.create_task,
-                    self._advance(ctx)
-                )
+                    self.play_next(ctx),
+                ),
             )
 
             await ctx.send(embed=discord.Embed(
@@ -168,28 +160,11 @@ class Music(commands.Cog):
                 color=PINK
             ))
 
-    # ── SKIP ───────────────────────────────────────────
-
     @commands.command(name="skip")
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.stop()
             await ctx.send("⏭ Skipped")
-
-    # ── STOP ───────────────────────────────────────────
-
-    @commands.command(name="stop")
-    async def stop(self, ctx):
-        q = self._get_q(ctx.guild.id)
-        q.queue.clear()
-        q.current = None
-
-        if ctx.voice_client:
-            await ctx.voice_client.disconnect()
-
-        await ctx.send("⏹ Stopped")
-
-    # ── PAUSE ──────────────────────────────────────────
 
     @commands.command(name="pause")
     async def pause(self, ctx):
@@ -197,13 +172,22 @@ class Music(commands.Cog):
             ctx.voice_client.pause()
             await ctx.send("⏸ Paused")
 
-    # ── RESUME ─────────────────────────────────────────
-
     @commands.command(name="resume")
     async def resume(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
             await ctx.send("▶ Resumed")
+
+    @commands.command(name="stop")
+    async def stop(self, ctx):
+        queue = self.get_queue(ctx.guild.id)
+        queue.queue.clear()
+        queue.current = None
+
+        if ctx.voice_client:
+            await ctx.voice_client.disconnect()
+
+        await ctx.send("⏹ Stopped")
 
 
 async def setup(bot):
