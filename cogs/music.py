@@ -366,13 +366,13 @@ class Music(commands.Cog):
             m_queue.queue.append({'player': player, 'title': player.title})
             await ctx.send(embed=discord.Embed(
                 description=f"📋 Added to queue: **{player.title}**", 
-                color=self.PINK))
+                color=PINK))
         else:
             m_queue.current = {'player': player, 'title': player.title}
-            voice_client.play(player, after=lambda e: self.play_next(ctx))
+            voice_client.play(player, after=lambda e: self._play_next(ctx))
             await ctx.send(embed=discord.Embed(
                 description=f"🎶 Now playing: **{player.title}**", 
-                color=self.PINK))
+                color=PINK))
 
     @commands.command(name="skip", aliases=["s"])
     async def skip(self, ctx: commands.Context):
