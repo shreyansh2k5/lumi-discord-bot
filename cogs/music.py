@@ -56,7 +56,7 @@ class YTDLSource(discord.PCMVolumeTransformer):
             data = data['entries'][0]
 
         filename = data['url'] if stream else ytdl.prepare_filename(data)
-        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+        return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
 
     @classmethod
     async def search_many(cls, query: str, limit: int = 5, *, loop=None) -> list[dict]:
