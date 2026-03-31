@@ -325,8 +325,14 @@ class Music(commands.Cog):
             q.current = src
             # Create a fake ctx-like object for _play_next callback
             class _Ctx:
-                def __init__(self, g, vc_, loop): self.guild=g; self.voice_client=vc_; self.loop=loop
-            fake_ctx = _Ctx(guild, vc, self.bot.loop)
+                def __init__(self, g, vc_, loop, c): 
+                    self.guild = g
+                    self.voice_client = vc_
+                    self.loop = loop
+                    self.channel = c
+                    
+            fake_ctx = _Ctx(guild, vc, self.bot.loop, channel)
+            
             vc.play(src, after=lambda e: self._play_next(fake_ctx))
             await self._send_np(guild.id, src, channel)
 
