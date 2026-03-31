@@ -332,7 +332,7 @@ class Music(commands.Cog):
                     self.channel = c
                     
             fake_ctx = _Ctx(guild, vc, self.bot.loop, channel)
-            
+
             vc.play(src, after=lambda e: self._play_next(fake_ctx))
             await self._send_np(guild.id, src, channel)
 
@@ -360,7 +360,7 @@ class Music(commands.Cog):
         except Exception as e:
             return await ctx.send(f"❌ An error occurred during playback: {e}")
 
-        m_queue = self.get_queue(ctx.guild.id)
+        m_queue = self._get_q(ctx.guild.id)
         
         if voice_client.is_playing() or voice_client.is_paused():
             m_queue.queue.append({'player': player, 'title': player.title})
