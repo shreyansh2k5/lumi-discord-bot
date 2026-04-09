@@ -6,11 +6,8 @@ Lumi is a sweet, playful, and caring bot built to make your Discord server more 
 
 ## ➕ Add Lumi to Your Server
 
-Invite link:
+Invite link: https://discord.com/oauth2/authorize?client_id=1387357109842350120&permissions=8&integration_type=0&scope=bot+applications.commands
 
-```
-https://discord.com/oauth2/authorize?client_id=1387357109842350120&permissions=8&integration_type=0&scope=bot+applications.commands
-```
 
 **Steps**
 1. Open the link above
