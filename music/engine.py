@@ -172,3 +172,41 @@ class GuildQueue:
     def clear(self) -> None:
         self.queue.clear()
         self.current = None
+
+
+# ───────────── Search ────────────────────────────────────────────────────────
+
+async def search_tracks(
+    query: str,
+    loop: asyncio.AbstractEventLoop,
+    limit: int = 5,
+) -> list[dict]:
+    """
+    Search SoundCloud for `limit` tracks and return lightweight metadata dicts.
+    No stream URLs are extracted — they are fetched fresh when a track is played.
+    """
+    def _run() -> list[dict]:
+        opts = {
+            "quiet":          True,
+            "no_warnings":    True,
+            "extract_flat":   True,   # fast — no stream URL resolution
+            "default_search": "scsearch",
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(f"scsearch{limit}:{query}", download=False)
+            results: list[dict] = []
+            for e in (info.get("entries") or [])[:limit]:
+                # For scsearch flat extraction, `url` is the SoundCloud page URL
+                page_url = e.get("url") or e.get("webpage_url", "")
+                results.append({
+                    "title":       e.get("title",    "Unknown"),
+                    "duration":    e.get("duration", 0),
+                    "webpage_url": page_url,
+                    "thumbnail":   e.get("thumbnail", ""),
+                    # query is the fallback used by create_source if webpage_url is empty
+                    "query":       page_url or f"scsearch1:{e.get('title', query)}",
+                    "requester":   "",
+                })
+            return results
+
+    return await loop.run_in_executor(None, _run)
