@@ -102,6 +102,8 @@ async def fetch_meta(query: str, loop: asyncio.AbstractEventLoop) -> dict:
     def _run() -> dict:
         info = ytdl_meta.extract_info(query, download=False)
         if info and "entries" in info:
+            if not info["entries"]:
+                raise ValueError("No results found.")
             info = info["entries"][0]
         if not info:
             raise ValueError("No results found.")
@@ -133,6 +135,8 @@ async def create_source(
     def _run() -> dict:
         info = ytdl_stream.extract_info(lookup, download=False)
         if info and "entries" in info:
+            if not info["entries"]:
+                raise ValueError(f"Could not resolve stream for: {track.get('title', 'Unknown')}")
             info = info["entries"][0]
         if not info or not info.get("url"):
             raise ValueError(f"Could not resolve stream for: {track['title']}")
