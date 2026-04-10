@@ -1,6 +1,6 @@
 # services/ai.py
-# Wrapper around Google Gemini API (free tier).
-# Uses gemini-1.5-flash — fast, free, 1M token context window.
+# Wrapper around Groq API.
+# Uses llama-3.1-8b-instant — extremely fast and efficient.
 
 import os
 import aiohttp
@@ -8,8 +8,8 @@ import aiohttp
 from core.personality import get_system_prompt, get_temperature
 from config import AI_MAX_TOKENS
 
-MODEL_ID = "gemini-2.5-flash"
-API_URL  = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+MODEL_ID = "llama-3.1-8b-instant"
+API_URL  = "https://api.groq.com/openai/v1/chat/completions"
 
 _session: aiohttp.ClientSession | None = None
 
@@ -29,12 +29,11 @@ async def query_groq(
     time_of_day: str = "",
 ) -> str:
     """
-    Sends conversation history to Gemini API.
-    Function kept as query_groq so no other files need changing.
+    Sends conversation history to Groq API using the OpenAI-compatible endpoint.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        print("[ERROR] GEMINI_API_KEY not set.")
+        print("[ERROR] GROQ_API_KEY not set.")
         return "⚠️ I lost my API key... please check my settings!"
 
     system_prompt = get_system_prompt(
@@ -44,50 +43,43 @@ async def query_groq(
         time_of_day=time_of_day,
     )
 
-    # Convert OpenAI-style messages to Gemini format
-    # Gemini uses "user"/"model" roles and "parts" instead of "content"
-    gemini_contents = []
+    groq_messages = [{"role": "system", "content": system_prompt}]
+    
+    # Copy conversation history
     for msg in messages:
-        role = "model" if msg["role"] == "assistant" else "user"
-        gemini_contents.append({
-            "role": role,
-            "parts": [{"text": msg["content"]}]
-        })
+        content = msg.get("content", "").strip()
+        if content:
+            # Ensure the role is either user or assistant (Groq strictness)
+            role = "assistant" if msg["role"] == "assistant" else "user"
+            groq_messages.append({"role": role, "content": content})
 
-    # If last message isn't from user, Gemini errors — ensure it ends with user
-    if not gemini_contents or gemini_contents[-1]["role"] != "user":
-        gemini_contents.append({"role": "user", "parts": [{"text": "Continue."}]})
+    # Groq works best when the final prompt is from the user
+    if not groq_messages or groq_messages[-1]["role"] != "user":
+        groq_messages.append({"role": "user", "content": "Continue."})
 
     body = {
-        "system_instruction": {
-            "parts": [{"text": system_prompt}]
-        },
-        "contents": gemini_contents,
-        "generationConfig": {
-            "temperature":    get_temperature(),
-            "maxOutputTokens": AI_MAX_TOKENS,
-        },
+        "model": MODEL_ID,
+        "messages": groq_messages,
+        "temperature": get_temperature(),
+        "max_tokens": AI_MAX_TOKENS,
     }
 
-    url = API_URL.format(model=MODEL_ID, key=api_key)
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
 
     try:
         session = await _get_session()
-        async with session.post(url, json=body) as resp:
+        async with session.post(API_URL, json=body, headers=headers) as resp:
             if resp.status == 200:
                 data = await resp.json()
-                text = (
-                    data.get("candidates", [{}])[0]
-                        .get("content", {})
-                        .get("parts", [{}])[0]
-                        .get("text", "")
-                        .strip()
-                )
+                text = data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
                 return text or "💬 Hmm... I didn't quite catch that."
             else:
                 error = await resp.text()
-                print(f"[ERROR] Gemini API {resp.status}: {error}")
+                print(f"[ERROR] Groq API {resp.status}: {error}")
                 return "⚠️ My brain is a bit fuzzy right now..."
     except Exception as e:
-        print(f"[ERROR] Gemini request failed: {e}")
+        print(f"[ERROR] Groq request failed: {e}")
         return "💥 Lumi crashed into a wall of code!"
