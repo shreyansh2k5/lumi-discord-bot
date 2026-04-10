@@ -36,20 +36,33 @@ class DeadChatCmds(commands.Cog):
         else:
             await interaction.followup.send(f"⚠️ {channel.mention} wasn't in the list.", ephemeral=True)
 
-    @deadchat_group.command(name="view", description="See all configured revival channels")
+    @deadchat_group.command(name="view", description="See all configured revival channels and the current interval")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def view_channels(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         await automod.ensure_guild_settings_in_cache(interaction.guild_id)
         gs  = automod._guild_settings_cache.get(interaction.guild_id)
+        
+        minutes = automod.get_revive_threshold(interaction.guild_id, gs)
+        if minutes >= 60 and minutes % 60 == 0:
+            threshold_str = f"{minutes // 60}h"
+        elif minutes >= 60:
+            threshold_str = f"{minutes // 60}h {minutes % 60}m"
+        else:
+            threshold_str = f"{minutes}m"
+            
         ids = automod.get_revive_channels(interaction.guild_id, gs)
         if not ids:
-            return await interaction.followup.send("💤 No channels set. Use `/deadchat add` to configure one.", ephemeral=True)
+            return await interaction.followup.send(f"💤 No channels set.\n⏱️ Interval: **{threshold_str}**.\nUse `/deadchat add` to configure a channel.", ephemeral=True)
+            
         mentions = []
         for cid in ids:
             ch = interaction.guild.get_channel(cid)
             mentions.append(ch.mention if ch else f"~~`{cid}`~~ *(deleted)*")
-        await interaction.followup.send("💬 Revival channels:\n" + "\n".join(f"• {m}" for m in mentions), ephemeral=True)
+            
+        msg = f"💬 Revival channels:\n" + "\n".join(f"• {m}" for m in mentions)
+        msg += f"\n\n⏱️ Current Interval: **{threshold_str}**"
+        await interaction.followup.send(msg, ephemeral=True)
 
 
     @deadchat_group.command(name="interval", description="Set how long chat must be dead before Lumi revives it ⏱️")
