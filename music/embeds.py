@@ -33,7 +33,6 @@ def build_np_embed(
 
     embed.add_field(name="⏱ Duration",   value=format_duration(dur),   inline=True)
     embed.add_field(name="👤 Requester", value=req,                     inline=True)
-    embed.add_field(name="🔊 Volume",    value=f"{volume_pct}%",        inline=True)
 
     status = []
     if paused:
