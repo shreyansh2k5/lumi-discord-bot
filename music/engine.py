@@ -163,15 +163,22 @@ class GuildQueue:
     `current` — dict of the track currently playing, or None
     """
 
-    __slots__ = ("queue", "current")
+    __slots__ = ("queue", "current", "history", "loop", "np_msg", "skip_flag")
 
     def __init__(self) -> None:
         self.queue:   list[dict]       = []
         self.current: dict | None      = None
+        self.history: list[dict]       = []
+        self.loop:    bool             = False
+        self.np_msg:  discord.Message | None = None
+        self.skip_flag: bool           = False
 
     def clear(self) -> None:
         self.queue.clear()
+        self.history.clear()
         self.current = None
+        self.loop = False
+        self.skip_flag = False
 
 
 # ───────────── Search ────────────────────────────────────────────────────────
