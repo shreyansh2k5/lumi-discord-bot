@@ -129,7 +129,10 @@ def get_system_prompt(
         situational += f"\nTime of day: {time_of_day}"
 
     emoji_section = (
-        f"\n== SERVER EMOJIS ==\nYou have access to these custom emojis: {server_emojis}. Use them to feel native to this server!"
+        f"\n== SERVER EMOJIS ==\n"
+        f"You have access to these custom server emojis: {server_emojis}\n"
+        f"CRITICAL INSTRUCTION: To use a custom emoji, you MUST output its EXACT raw string including the `<` and `>` brackets (e.g., `<:name:id>`). "
+        f"Do not alter the syntax. Use them frequently to feel native to this server!"
         if server_emojis
         else "\nUse standard emojis (✨ 💖 🌸 😊 👀 🔥 💀 🥺 etc.) expressively."
     )
