@@ -5,7 +5,8 @@
 COMMAND_PREFIX = "$"
 
 # ── Dead Chat Reviver ────────────────────────────────────────────
-DEAD_CHAT_CHECK_INTERVAL_MINUTES = 60   # check once per hour (saves CPU vs every 30min)
+# The deadchat check runs every 5 minutes by default now.
+# Guilds can set their own intervals via /deadchat interval
 
 # ── AI ───────────────────────────────────────────────────────────
 AI_MAX_TOKENS     = 300

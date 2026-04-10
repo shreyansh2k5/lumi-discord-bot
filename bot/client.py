@@ -6,10 +6,7 @@ import time
 import discord
 from discord.ext import commands, tasks
 
-from config import (
-    COMMAND_PREFIX,
-    DEAD_CHAT_CHECK_INTERVAL_MINUTES,
-)
+from config import COMMAND_PREFIX
 from services.ai import query_groq as query_model
 import moderation.automod as automod
 
@@ -25,7 +22,7 @@ bot = commands.Bot(
 
 
 
-@tasks.loop(minutes=DEAD_CHAT_CHECK_INTERVAL_MINUTES)
+@tasks.loop(minutes=5)
 async def revive_chat_loop():
     """
     Periodically checks whether chat has gone quiet.
