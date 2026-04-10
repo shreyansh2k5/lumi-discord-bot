@@ -2,7 +2,6 @@ import asyncio
 import discord
 from discord.ext import commands
 import yt_dlp
-import subprocess
 import shutil
 import os
 
@@ -11,42 +10,68 @@ from core.embeds import PINK
 yt_dlp.utils.bug_reports_message = lambda: ''
 
 # ───────────── FFmpeg Discovery ─────────────
-# Robustly locates FFmpeg so PM2's stripped PATH never causes a crash.
+
 def _find_ffmpeg() -> str:
-    # 1. Check PATH normally
     found = shutil.which("ffmpeg")
     if found:
         return found
-    # 2. Hard-coded system path on Ubuntu/Debian
     if os.path.isfile("/usr/bin/ffmpeg"):
         return "/usr/bin/ffmpeg"
-    # 3. Local Windows binary (dev machine)
     local = os.path.join(os.path.dirname(__file__), "..", "ffmpeg.exe")
     if os.path.isfile(local):
         return os.path.abspath(local)
-    return "ffmpeg"  # last resort – will raise FileNotFoundError clearly
+    return "ffmpeg"
 
 FFMPEG_PATH = _find_ffmpeg()
 print(f"[Music] FFmpeg resolved to: {FFMPEG_PATH}")
 
 FFMPEG_OPTS = {
     "executable":     FFMPEG_PATH,
-    # -reconnect flags keep yt-dlp streams alive if the CDN hiccups
     "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",
     "options":        "-vn -loglevel error",
 }
 
-YTDL_OPTIONS = {
-    'format':         'bestaudio/best',
-    'noplaylist':     True,
-    'quiet':          True,
-    'no_warnings':    True,
-    # scsearch bypasses Azure-flagged YouTube IPs via SoundCloud
+# ───────────── yt-dlp setup ─────────────
+#
+# Two separate YoutubeDL instances:
+#   YTDL_META  — fast, flat extraction. Used ONLY to get title/duration for
+#                the "Added to queue" preview. Does NOT extract a stream URL.
+#   YTDL_STREAM — full extraction. Called at the MOMENT of playback to get a
+#                 fresh, never-expired CDN stream URL.
+#
+# Why two instances?
+#   SoundCloud/YouTube CDN stream URLs are time-limited (typically 5–30 min).
+#   If we extract the URL when the user queues song #3 and song #1+#2 each
+#   take 4 minutes, the URL for song #3 is stale before FFmpeg ever touches
+#   it → FFmpeg silently exits with code 0 → premature skip.
+
+YTDL_META_OPTS = {
+    'format':       'bestaudio/best',
+    'noplaylist':   True,
+    'quiet':        True,
+    'no_warnings':  True,
     'default_search': 'scsearch',
     'source_address': '0.0.0.0',
+    # extract_flat=True means "do NOT resolve the direct stream URL"
+    # This makes the request ~3× faster for the queue preview.
+    'extract_flat': 'in_playlist',
 }
 
-ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
+YTDL_STREAM_OPTS = {
+    'format':       'bestaudio/best',
+    'noplaylist':   True,
+    'quiet':        True,
+    'no_warnings':  True,
+    'default_search': 'scsearch',
+    'source_address': '0.0.0.0',
+    # extractor_args tries tv_embedded client first, which is less restricted
+    'extractor_args': {
+        'youtube': {'player_client': ['tv_embedded', 'ios', 'web']}
+    },
+}
+
+ytdl_meta   = yt_dlp.YoutubeDL(YTDL_META_OPTS)
+ytdl_stream = yt_dlp.YoutubeDL(YTDL_STREAM_OPTS)
 
 
 # ───────────── Utils ─────────────
@@ -58,38 +83,83 @@ def fmt_time(seconds):
     return f"{m}:{s:02}"
 
 
-# ───────────── Audio Source ─────────────
+# ───────────── Async extraction helpers ─────────────
 
-class YTDLSource(discord.PCMVolumeTransformer):
-    def __init__(self, source, *, data):
-        super().__init__(source, volume=1.0)
-        self.title     = data.get("title", "Unknown")
-        self.url       = data.get("url")
-        self.duration  = data.get("duration", 0)
-        self.webpage   = data.get("webpage_url", "")
-        self.thumbnail = data.get("thumbnail")
-        self.requester = None
+async def _fetch_meta(query: str, loop) -> dict:
+    """
+    Fast metadata fetch — returns {title, duration, webpage_url, thumbnail, query}.
+    Does NOT return a playable stream URL (intentionally).
+    """
+    def _run():
+        info = ytdl_meta.extract_info(query, download=False)
+        if info and "entries" in info:
+            info = info["entries"][0]
+        if not info:
+            raise ValueError("No results found.")
+        return {
+            "title":       info.get("title", "Unknown"),
+            "duration":    info.get("duration", 0),
+            "webpage_url": info.get("webpage_url") or info.get("url", ""),
+            "thumbnail":   info.get("thumbnail", ""),
+            # Store the original query so we can re-fetch later
+            "query":       query,
+        }
+    return await loop.run_in_executor(None, _run)
 
-    @classmethod
-    async def from_url(cls, url, *, loop):
-        data = await loop.run_in_executor(
-            None, lambda: ytdl.extract_info(url, download=False)
-        )
-        if "entries" in data:
-            data = data["entries"][0]
 
-        return cls(
-            discord.FFmpegPCMAudio(data["url"], **FFMPEG_OPTS),
-            data=data,
-        )
+async def _create_source(track: dict, loop) -> discord.PCMVolumeTransformer:
+    """
+    Called RIGHT BEFORE playback. Fetches a brand-new, never-expired stream
+    URL and wraps it in an FFmpegPCMAudio source.
+
+    We re-use the webpage_url if available (more precise), falling back to
+    the original search query.
+    """
+    lookup = track.get("webpage_url") or track["query"]
+
+    def _run():
+        info = ytdl_stream.extract_info(lookup, download=False)
+        if info and "entries" in info:
+            info = info["entries"][0]
+        if not info or not info.get("url"):
+            raise ValueError(f"Could not extract stream for: {track['title']}")
+        return info
+
+    info = await loop.run_in_executor(None, _run)
+
+    source = discord.FFmpegPCMAudio(info["url"], **FFMPEG_OPTS)
+    player = discord.PCMVolumeTransformer(source, volume=1.0)
+
+    # Attach metadata so the queue display stays correct
+    player.title     = info.get("title",       track["title"])
+    player.duration  = info.get("duration",    track["duration"])
+    player.webpage   = info.get("webpage_url", track.get("webpage_url", ""))
+    player.thumbnail = info.get("thumbnail",   track.get("thumbnail", ""))
+    player.requester = track.get("requester", "Unknown")
+
+    return player
 
 
 # ───────────── Queue ─────────────
 
 class GuildQueue:
+    """
+    Stores lightweight track dicts in the queue — NOT pre-fetched audio
+    sources. Stream URLs are fetched fresh by _play_next() at playback time.
+
+    Track dict shape:
+        {
+            "title":       str,
+            "duration":    int,   # seconds
+            "webpage_url": str,   # e.g. https://soundcloud.com/...
+            "thumbnail":   str,
+            "query":       str,   # original search string / URL
+            "requester":   str,
+        }
+    """
     def __init__(self):
-        self.queue   = []
-        self.current = None
+        self.queue   = []   # list[dict]
+        self.current = None  # dict | None  (currently playing track metadata)
 
 
 # ───────────── Music Cog ─────────────
@@ -104,88 +174,97 @@ class Music(commands.Cog):
             self.queues[guild_id] = GuildQueue()
         return self.queues[guild_id]
 
-    # ── Internal helpers ──────────────────────────────────────────
+    # ── Scheduler (called from FFmpeg after= thread) ───────────────
 
     def _schedule_next(self, ctx):
         """
-        Called from the FFmpeg after= callback (non-async thread).
-        Schedules _play_next as a proper coroutine-task on the event loop.
-        Using asyncio.run_coroutine_threadsafe is the correct pattern here —
-        it receives a coroutine, NOT asyncio.create_task.
+        Bridge between the non-async FFmpeg callback thread and the asyncio
+        event loop. run_coroutine_threadsafe is the ONLY correct API here.
         """
         asyncio.run_coroutine_threadsafe(self._play_next(ctx), self.bot.loop)
 
+    def _after_track(self, error, ctx):
+        if error:
+            print(f"[Music] FFmpeg error during playback: {error}")
+        self._schedule_next(ctx)
+
+    # ── Player engine ──────────────────────────────────────────────
+
     async def _play_next(self, ctx):
-        """Async engine that pops the queue and starts the next track."""
+        """
+        Pop the next track dict from the queue, fetch a FRESH stream URL
+        right now, and start playback. Any pre-fetched URLs in the dict are
+        intentionally ignored here — we always re-resolve just before playing.
+        """
         queue = self.get_queue(ctx.guild.id)
 
         if not queue.queue:
             queue.current = None
-            # Disconnect after a short idle grace period
+            # Idle auto-disconnect after 5 minutes
             await asyncio.sleep(300)
             if ctx.voice_client and not ctx.voice_client.is_playing():
-                await ctx.voice_client.disconnect()
+                try:
+                    await ctx.voice_client.disconnect()
+                except Exception:
+                    pass
             return
 
-        next_song = queue.queue.pop(0)
-        queue.current = next_song
+        track = queue.queue.pop(0)
+        queue.current = track
 
-        # Guard: voice client might have disconnected (e.g. 4006 kick)
         if not ctx.voice_client or not ctx.voice_client.is_connected():
+            print("[Music] Voice client gone before _play_next could play.")
+            return
+
+        # ── FRESH stream fetch ─────────────────────────────────────
+        try:
+            print(f"[Music] Fetching fresh stream for: {track['title']}")
+            player = await _create_source(track, self.bot.loop)
+        except Exception as exc:
+            print(f"[Music] Stream fetch failed for '{track['title']}': {exc}")
+            await ctx.send(embed=discord.Embed(
+                description=f"⚠️ Skipped **{track['title']}** — could not load stream.\n`{exc}`",
+                color=discord.Color.orange()
+            ))
+            # Try the next song instead of silently dying
+            await self._play_next(ctx)
             return
 
         try:
             ctx.voice_client.play(
-                next_song,
-                after=lambda e: self._log_error_and_schedule(e, ctx),
+                player,
+                after=lambda e: self._after_track(e, ctx),
             )
         except discord.ClientException as exc:
-            # Already playing — this should not happen but guard anyway
-            print(f"[Music] play() failed: {exc}")
+            print(f"[Music] vc.play() failed: {exc}")
             return
 
         await ctx.send(embed=discord.Embed(
-            description=f"🎶 Now playing: **{next_song.title}**",
+            description=f"🎶 Now playing: **{player.title}** `[{fmt_time(player.duration)}]`\n"
+                        f"👤 Requested by **{player.requester}**",
             color=PINK
         ))
-
-    def _log_error_and_schedule(self, error, ctx):
-        """after= callback: log FFmpeg errors then schedule the next track."""
-        if error:
-            print(f"[Music] Playback error: {error}")
-        self._schedule_next(ctx)
 
     # ── Voice connection helper ────────────────────────────────────
 
     async def _connect(self, ctx) -> discord.VoiceClient | None:
         """
-        Connects to the user's voice channel.
-
-        Azure India datacenter bug: Discord's automatic server selection
-        routes Indian VCs to c-bom11.discord.media which drops UDP audio
-        packets → 4006 disconnect after ~30 s of silence.
-
-        FIX: Override rtc_region to 'singapore' on connect.
-        Singapore (sgp) is the next closest stable region to India and
-        does NOT have the UDP-drop bug.
-
-        We do this programmatically so users don't have to touch server
-        settings. The channel's region is reset to auto when the bot
-        disconnects (see on_voice_state_update).
+        Connect to voice and pin the channel to Singapore to avoid the
+        Azure India → c-bom UDP-drop / 4006 bug.
         """
         channel = ctx.author.voice.channel
 
-        # Only override if currently on auto or India
-        needs_override = channel.rtc_region in (None, "india")
-
-        if needs_override:
+        if channel.rtc_region in (None, "india", "us-west", "us-east",
+                                  "us-central", "us-south", "rotterdam",
+                                  "russia", "sydney", "brazil", "hongkong",
+                                  "southafrica", "japan", "europe"):
             try:
                 await channel.edit(rtc_region="singapore")
                 print(f"[Music] Overrode VC region → singapore (was {channel.rtc_region!r})")
             except discord.Forbidden:
-                print("[Music] ⚠ No permission to edit VC region — bot may hit 4006")
-            except Exception as e:
-                print(f"[Music] Region edit failed: {e}")
+                print("[Music] ⚠ No Manage Channels permission — cannot override VC region")
+            except Exception as exc:
+                print(f"[Music] Region edit failed: {exc}")
 
         vc = ctx.voice_client
         if not vc:
@@ -208,32 +287,41 @@ class Music(commands.Cog):
 
         await ctx.typing()
 
+        if not query.startswith("http"):
+            search_query = f"scsearch1:{query}"
+        else:
+            search_query = query
+
+        # ── Fast metadata fetch (no stream URL yet) ──
         try:
-            if not query.startswith("http"):
-                query = f"scsearch1:{query}"
-
-            player = await YTDLSource.from_url(query, loop=self.bot.loop)
-            player.requester = ctx.author.display_name
-
-        except Exception as e:
-            return await ctx.send(f"❌ Error: {e}")
+            track = await _fetch_meta(search_query, self.bot.loop)
+            track["requester"] = ctx.author.display_name
+        except Exception as exc:
+            return await ctx.send(f"❌ Could not find that song: {exc}")
 
         queue = self.get_queue(ctx.guild.id)
 
         if vc.is_playing() or vc.is_paused():
-            queue.queue.append(player)
+            # Add to queue — stream URL will be fetched when it's this song's turn
+            queue.queue.append(track)
             await ctx.send(embed=discord.Embed(
-                description=f"📋 Added to queue: **{player.title}**",
+                description=f"📋 Added to queue: **{track['title']}** `[{fmt_time(track['duration'])}]`\n"
+                            f"Position: **#{len(queue.queue)}**",
                 color=PINK
             ))
         else:
-            queue.current = player
-            vc.play(
-                player,
-                after=lambda e: self._log_error_and_schedule(e, ctx),
-            )
+            # Play immediately — fetch fresh stream now
+            queue.current = track
+            try:
+                player = await _create_source(track, self.bot.loop)
+            except Exception as exc:
+                queue.current = None
+                return await ctx.send(f"❌ Failed to load stream: {exc}")
+
+            vc.play(player, after=lambda e: self._after_track(e, ctx))
             await ctx.send(embed=discord.Embed(
-                description=f"🎶 Now playing: **{player.title}**",
+                description=f"🎶 Now playing: **{player.title}** `[{fmt_time(player.duration)}]`\n"
+                            f"👤 Requested by **{player.requester}**",
                 color=PINK
             ))
 
@@ -269,9 +357,14 @@ class Music(commands.Cog):
 
         lines = []
         if queue.current:
-            lines.append(f"**Now:** {queue.current.title} `[{fmt_time(queue.current.duration)}]`")
+            lines.append(
+                f"▶ **Now:** {queue.current['title']} "
+                f"`[{fmt_time(queue.current.get('duration', 0))}]`"
+            )
         for i, song in enumerate(queue.queue[:10], 1):
-            lines.append(f"`{i}.` {song.title} `[{fmt_time(song.duration)}]`")
+            lines.append(
+                f"`{i}.` {song['title']} `[{fmt_time(song.get('duration', 0))}]`"
+            )
         if len(queue.queue) > 10:
             lines.append(f"*…and {len(queue.queue) - 10} more*")
 
@@ -281,15 +374,26 @@ class Music(commands.Cog):
             color=PINK
         ))
 
+    @commands.hybrid_command(name="nowplaying", aliases=["np"], description="Show current song")
+    async def nowplaying(self, ctx):
+        queue = self.get_queue(ctx.guild.id)
+        if not queue.current:
+            return await ctx.send("❌ Nothing is playing.")
+        t = queue.current
+        await ctx.send(embed=discord.Embed(
+            title="🎵 Now Playing",
+            description=f"**{t['title']}** `[{fmt_time(t.get('duration', 0))}]`\n"
+                        f"👤 Requested by **{t.get('requester', 'Unknown')}**",
+            color=PINK
+        ))
+
     @commands.hybrid_command(name="stop", description="Stop playback and disconnect")
     async def stop(self, ctx):
         queue = self.get_queue(ctx.guild.id)
         queue.queue.clear()
         queue.current = None
-
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
-
         await ctx.send("⏹ Stopped and disconnected.")
 
     @commands.hybrid_command(name="volume", description="Set volume (10–200)")
@@ -300,7 +404,7 @@ class Music(commands.Cog):
         ctx.voice_client.source.volume = vol / 100
         await ctx.send(f"🔊 Volume set to **{vol}%**")
 
-    # ── Region reset on disconnect ─────────────────────────────────
+    # ── Region restore on disconnect ───────────────────────────────
 
     @commands.Cog.listener()
     async def on_voice_state_update(
@@ -309,10 +413,6 @@ class Music(commands.Cog):
         before: discord.VoiceState,
         after: discord.VoiceState,
     ):
-        """
-        When the bot disconnects from a VC, restore rtc_region → None (auto)
-        so the manual server settings are not permanently changed.
-        """
         if member.id != self.bot.user.id:
             return
         if before.channel and after.channel is None:
@@ -320,7 +420,7 @@ class Music(commands.Cog):
                 await before.channel.edit(rtc_region=None)
                 print(f"[Music] Restored VC region → auto for #{before.channel.name}")
             except Exception:
-                pass  # non-critical
+                pass
 
 
 async def setup(bot):
