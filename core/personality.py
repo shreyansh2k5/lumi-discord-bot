@@ -130,11 +130,9 @@ def get_system_prompt(
 
     emoji_section = (
         f"\n== SERVER EMOJIS ==\n"
-        f"You have access to these custom server emojis. They are provided as 'name: code':\n"
-        f"{server_emojis}\n"
-        f"CRITICAL INSTRUCTION: To use a custom emoji, you MUST copy its exact code from the right side of the colon, including the `<` and `>` brackets. "
-        f"For example, if the list has 'cat_smile: <:cat_smile:12345>', you MUST output exactly <:cat_smile:12345>. "
-        f"Do NOT output just :cat_smile: without the brackets. Use them frequently!"
+        f"You have access to these custom emojis: {server_emojis}\n"
+        f"To use them, you MUST output their exact names surrounded by colons, e.g., :emoji_name:. "
+        f"Do NOT use angle brackets or IDs."
         if server_emojis
         else "\nUse standard emojis (✨ 💖 🌸 😊 👀 🔥 💀 🥺 etc.) expressively."
     )

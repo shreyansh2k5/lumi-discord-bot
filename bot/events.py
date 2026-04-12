@@ -148,7 +148,8 @@ async def on_message(message: discord.Message):
         server_name  = message.guild.name   if message.guild else "DM"
         channel_name = message.channel.name if message.guild else "DM"
         time_of_day  = _get_time_of_day()
-        emoji_str    = ", ".join(f"{e.name}: {str(e)}" for e in message.guild.emojis[:20]) if message.guild else ""
+        # Feed the AI a simplified format: :emoji_name:
+        emoji_str = ", ".join(f":{e.name}:" for e in message.guild.emojis[:20]) if message.guild else ""
 
         # Fetch recent chat for situational awareness
         recent_msgs  = await _fetch_recent_context(message.channel) if message.guild else []
@@ -186,6 +187,11 @@ async def on_message(message: discord.Message):
         # Only store the clean input in memory (not the whole context block)
         add_to_memory(user_id, "user",      clean_input)
         add_to_memory(user_id, "assistant", response)
+
+        # Replace the AI's :emoji_name: tags with the actual Discord <...:ID> format
+        if message.guild:
+            for e in message.guild.emojis:
+                response = response.replace(f":{e.name}:", str(e))
 
         await message.reply(response)
 
