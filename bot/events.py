@@ -5,7 +5,7 @@ import datetime
 import discord
 from discord.ext import commands
 
-from bot.client import bot
+from bot.client import bot, channel_last_message
 import moderation.automod as automod
 from moderation.automod import check_bad_words, is_role_exempt, ensure_guild_settings_in_cache
 from services.ai import query_groq
@@ -80,7 +80,7 @@ async def on_message(message: discord.Message):
         return
 
     if message.guild:
-        bot.last_message_time = time.time()
+        channel_last_message[message.channel.id] = time.time()
 
     # ── Auto-moderation ──────────────────────────────────────────
     if message.guild and isinstance(message.author, discord.Member):

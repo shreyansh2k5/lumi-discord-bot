@@ -37,7 +37,6 @@ bot = get_client()
 async def on_ready():
     import time
     bot.start_time = time.time()        # used by /status command
-    bot.last_message_time = time.time()  # used by dead chat revival loop
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
 
     # ── Global slash-command error handler ──────────────────────
