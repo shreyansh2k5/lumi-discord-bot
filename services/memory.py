@@ -4,7 +4,7 @@
 
 _memory: dict[str, list[dict]] = {}
 
-MAX_HISTORY = 5  # number of turns (each turn = 1 user + 1 assistant message)
+MAX_HISTORY = 8  # number of turns (each turn = 1 user + 1 assistant message)
 
 
 def add_to_memory(user_id: str, role: str, content: str) -> None:
