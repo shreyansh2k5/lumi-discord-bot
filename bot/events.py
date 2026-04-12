@@ -148,7 +148,7 @@ async def on_message(message: discord.Message):
         server_name  = message.guild.name   if message.guild else "DM"
         channel_name = message.channel.name if message.guild else "DM"
         time_of_day  = _get_time_of_day()
-        emoji_str    = " ".join(str(e) for e in message.guild.emojis[:20]) if message.guild else ""
+        emoji_str    = ", ".join(f"{e.name}: {str(e)}" for e in message.guild.emojis[:20]) if message.guild else ""
 
         # Fetch recent chat for situational awareness
         recent_msgs  = await _fetch_recent_context(message.channel) if message.guild else []

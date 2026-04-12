@@ -79,7 +79,7 @@ async def revive_chat_loop():
                     continue  # Chat is still alive in this channel
 
                 # --- Chat is dead — send a revival message ---
-                emoji_str = " ".join(str(e) for e in guild.emojis[:15])
+                emoji_str = ", ".join(f"{e.name}: {str(e)}" for e in guild.emojis[:15])
                 messages = [{"role": "user", "content": "The chat has been dead for a while. Start a fun, cute conversation to get people talking again!"}]
 
                 async with channel.typing():
