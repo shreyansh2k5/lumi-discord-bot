@@ -192,11 +192,11 @@ class Economy(commands.Cog):
         if amount <= 0:
             return await ctx.send(embed=discord.Embed(description="❌ Amount must be positive.", color=discord.Color.red()))
         intro   = await send_intro(ctx, "💸", "Transferring Coins", f"*Sending `{amount:,}` {LUNA_NAME} to {target.display_name}...*")
-        success = await atomic_give(str(ctx.author.id), str(target.id), amount)
+        success, msg = await atomic_give(str(ctx.author.id), str(target.id), amount)
         if success:
             await intro.edit(embed=result_embed("💸  Transfer Complete!", f"Sent **`{amount:,}` {LUNA_NAME}** to {target.mention}!", color=discord.Color.green(), author_name=ctx.author.display_name, author_icon=str(ctx.author.display_avatar.url)))
         else:
-            await intro.edit(embed=result_embed("❌  Transfer Failed", "You don't have enough coins!", color=discord.Color.red()))
+            await intro.edit(embed=result_embed("❌  Transfer Failed", msg, color=discord.Color.red()))
 
     # ── BALANCE ───────────────────────────────────────────────────
 

@@ -1,8 +1,9 @@
 # economy/transactions.py
 # All Firestore read/write operations for the economy system.
 
+import datetime
 from google.cloud import firestore
-from economy.config import STARTING_BALANCE
+from economy.config import STARTING_BALANCE, DAILY_TRANSFER_LIMIT
 
 db = None
 
@@ -27,6 +28,9 @@ async def get_user_data(user_id: str) -> dict:
         "lastBeg":         0,
         "lastRaid":        0,
         "pets":            [],
+        "dailyTransferDate": "",
+        "dailySent":       0,
+        "dailyReceived":   0,
     }
     await doc_ref.set(data)
     return data
@@ -37,7 +41,7 @@ async def update_user_data(user_id: str, data: dict) -> None:
     await db.collection("users").document(user_id).update(data)
 
 
-async def atomic_give(sender_id: str, receiver_id: str, amount: int) -> bool:
+async def atomic_give(sender_id: str, receiver_id: str, amount: int) -> tuple[bool, str]:
     """Safely transfers coins from sender to receiver in a single transaction."""
     transaction = db.transaction()
 
@@ -45,13 +49,50 @@ async def atomic_give(sender_id: str, receiver_id: str, amount: int) -> bool:
     async def _transfer(tx, sender_ref, receiver_ref, amt):
         sender_snap   = await sender_ref.get(transaction=tx)
         receiver_snap = await receiver_ref.get(transaction=tx)
+        
+        sender_coins = sender_snap.get("coins") or 0
+        receiver_coins = receiver_snap.get("coins") or 0
 
-        if sender_snap.get("coins") < amt:
-            return False
+        if sender_coins < amt:
+            return False, "You don't have enough coins!"
 
-        tx.update(sender_ref,   {"coins": sender_snap.get("coins")   - amt})
-        tx.update(receiver_ref, {"coins": receiver_snap.get("coins") + amt})
-        return True
+        today_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+
+        sender_date = sender_snap.get("dailyTransferDate") or ""
+        sender_sent = sender_snap.get("dailySent") or 0
+        if sender_date != today_str:
+            sender_sent = 0
+            
+        if sender_sent + amt > DAILY_TRANSFER_LIMIT:
+            return False, f"You can only send up to {DAILY_TRANSFER_LIMIT:,} coins per day!"
+
+        receiver_date = receiver_snap.get("dailyTransferDate") or ""
+        receiver_received = receiver_snap.get("dailyReceived") or 0
+        if receiver_date != today_str:
+            receiver_received = 0
+            
+        if receiver_received + amt > DAILY_TRANSFER_LIMIT:
+            return False, f"The receiver can only receive up to {DAILY_TRANSFER_LIMIT:,} coins per day!"
+
+        sender_updates = {
+            "coins": sender_coins - amt,
+            "dailyTransferDate": today_str,
+            "dailySent": sender_sent + amt,
+        }
+        if sender_date != today_str:
+            sender_updates["dailyReceived"] = 0
+
+        receiver_updates = {
+            "coins": receiver_coins + amt,
+            "dailyTransferDate": today_str,
+            "dailyReceived": receiver_received + amt,
+        }
+        if receiver_date != today_str:
+            receiver_updates["dailySent"] = 0
+
+        tx.update(sender_ref, sender_updates)
+        tx.update(receiver_ref, receiver_updates)
+        return True, ""
 
     sender_ref   = db.collection("users").document(sender_id)
     receiver_ref = db.collection("users").document(receiver_id)

@@ -12,9 +12,13 @@ DAILY_COOLDOWN = 86400  # 24 hours
 BEG_COOLDOWN   = 300    # 5 minutes
 BANK_COOLDOWN  = 86400  # 24 hours
 
+# Limits
+DAILY_TRANSFER_LIMIT = 20_000_000
+
 # Raid
 RAID_SUCCESS_CHANCE = 0.50
-RAID_MAX_STEAL      = 0.25  # 25% of target wallet
+RAID_MAX_STEAL      = 0.20  # 20% of the mean wallet balance
+
 
 # Blackjack
 BJ_MAX_BET          = 50000
