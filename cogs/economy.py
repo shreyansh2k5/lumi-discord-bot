@@ -12,7 +12,7 @@ from economy.transactions import (
 )
 from economy.config import (
     DAILY_REWARD, BJ_MAX_BET, LUNA_NAME,
-    STARTING_BALANCE, PET_SHOP, RAID_SUCCESS_CHANCE,
+    STARTING_BALANCE, PET_SHOP, RAID_SUCCESS_CHANCE, MAX_BET
 )
 from economy.logic import (
     get_beg_earnings, process_flip,
@@ -118,6 +118,8 @@ class Economy(commands.Cog):
         data = await get_user_data(str(ctx.author.id))
         if amount <= 0 or data["coins"] < amount:
             return await ctx.send(embed=discord.Embed(description="❌ You don't have enough coins!", color=discord.Color.red()), ephemeral=True)
+        if amount > MAX_BET:
+            return await ctx.send(embed=discord.Embed(description=f"❌ Maximum bet limit is {MAX_BET:,} {LUNA_NAME}!", color=discord.Color.red()), ephemeral=True)
         intro = await send_intro(ctx, "🪙", "Coin Flip", f"*{ctx.author.display_name} flips a coin for `{amount:,}` {LUNA_NAME}...*", color=GOLD)
         win, delta = process_flip(amount)
         new_bal    = data["coins"] + delta
@@ -137,6 +139,8 @@ class Economy(commands.Cog):
         data = await get_user_data(str(ctx.author.id))
         if amount <= 0 or data["coins"] < amount:
             return await ctx.send(embed=discord.Embed(description="❌ You don't have enough coins!", color=discord.Color.red()), ephemeral=True)
+        if amount > MAX_BET:
+            return await ctx.send(embed=discord.Embed(description=f"❌ Maximum bet limit is {MAX_BET:,} {LUNA_NAME}!", color=discord.Color.red()), ephemeral=True)
         intro = await send_intro(ctx, "🎲", "Dice Roll", f"*{ctx.author.display_name} shakes the dice for `{amount:,}` {LUNA_NAME}...*", color=GOLD)
         val, jackpot, delta = process_roll(amount)
         new_bal = data["coins"] + delta
