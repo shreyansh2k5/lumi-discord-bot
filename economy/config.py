@@ -10,7 +10,7 @@ BEG_MAX         = 1000
 RAID_COOLDOWN  = 3600   # 1 hour
 DAILY_COOLDOWN = 86400  # 24 hours
 BEG_COOLDOWN   = 300    # 5 minutes
-BANK_COOLDOWN  = 86400  # 24 hours
+BANK_COOLDOWN  = 43200  # 12 hours
 
 # Limits
 DAILY_TRANSFER_LIMIT = 20_000_000
@@ -29,13 +29,14 @@ BJ_BLACKJACK_PAYOUT = 2.5
 PET_SHOP = {
     "dog":      {"price":   90_000, "emoji": "🐶"},
     "cat":      {"price":   70_000, "emoji": "🐱"},
-    "hamster":  {"price": 1000_000, "emoji": "🐹"},
+    "hamster":  {"price": 67_000_000, "emoji": "🐹"},
     "rabbit":   {"price":   15_000, "emoji": "🐰"},
     "parrot":   {"price":   12_000, "emoji": "🦜"},
     "horse":    {"price":   45_000, "emoji": "🐎"},
-    "squirrel": {"price":   10_000, "emoji": "🐿️"},
     "goldfish": {"price":    7_000, "emoji": "🐠"},
-    "eagle":    {"price":  100_000, "emoji": "🦅"},
-    "lion":     {"price":  230_000, "emoji": "🦁"},
-    "tiger":    {"price":  350_000, "emoji": "🐯"},
+    "eagle":    {"price":  800_000, "emoji": "🦅"},
+    "lion":     {"price":  630_000, "emoji": "🦁"},
+    "tiger":    {"price":  850_000, "emoji": "🐯"},
+    "shark":    {"price": 750_000, "emoji": "🦈"},
+    "wolf":     {"price": 1_000_000, "emoji": "🐺"},
 }
