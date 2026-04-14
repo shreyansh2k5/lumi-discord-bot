@@ -41,7 +41,7 @@ async def update_user_data(user_id: str, data: dict) -> None:
     await db.collection("users").document(user_id).update(data)
 
 
-async def atomic_give(sender_id: str, receiver_id: str, amount: int) -> tuple[bool, str]:
+async def atomic_give(sender_id: str, receiver_id: str, amount: int, is_sender_owner: bool = False, is_receiver_owner: bool = False) -> tuple[bool, str]:
     """Safely transfers coins from sender to receiver in a single transaction."""
     transaction = db.transaction()
 
@@ -66,16 +66,16 @@ async def atomic_give(sender_id: str, receiver_id: str, amount: int) -> tuple[bo
         if sender_date != today_str:
             sender_sent = 0
             
-        if sender_sent + amt > DAILY_TRANSFER_LIMIT:
-            return False, f"You can only send up to {DAILY_TRANSFER_LIMIT:,} coins per day!"
+        if not is_sender_owner and (sender_sent + amt > DAILY_TRANSFER_LIMIT):
+            return False, f"You can only send up to {DAILY_TRANSFER_LIMIT:,} coins per day! (You have already sent {sender_sent:,} today)"
 
         receiver_date = receiver_data.get("dailyTransferDate", "")
         receiver_received = receiver_data.get("dailyReceived", 0)
         if receiver_date != today_str:
             receiver_received = 0
             
-        if receiver_received + amt > DAILY_TRANSFER_LIMIT:
-            return False, f"The receiver can only receive up to {DAILY_TRANSFER_LIMIT:,} coins per day!"
+        if not is_receiver_owner and (receiver_received + amt > DAILY_TRANSFER_LIMIT):
+            return False, f"The receiver can only receive up to {DAILY_TRANSFER_LIMIT:,} coins per day! (They have already received {receiver_received:,} today)"
 
         sender_updates = {
             "coins": sender_coins - amt,
