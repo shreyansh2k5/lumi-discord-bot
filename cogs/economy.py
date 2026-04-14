@@ -106,20 +106,17 @@ class Economy(commands.Cog):
     # ── BEG ───────────────────────────────────────────────────────
 
     @commands.hybrid_command(name="beg", description="Beg for some coins 🙏")
+    @commands.cooldown(1, 300, commands.BucketType.user)
     async def beg(self, ctx: commands.Context):
+        intro = await send_intro(ctx, "🙏", "Begging...", f"*{ctx.author.display_name} holds out their hand...*")
+        
         user_id = str(ctx.author.id)
         data    = await get_user_data(user_id)
         
-        current_time = time.time()
-        last_time = data.get("lastBeg", 0)
-        if current_time - last_time < BEG_COOLDOWN:
-            wait_time = int(last_time + BEG_COOLDOWN)
-            return await ctx.send(embed=discord.Embed(description=f"⏰ Don't be greedy! You can beg again <t:{wait_time}:R>.", color=discord.Color.red()), ephemeral=True)
-
-        intro = await send_intro(ctx, "🙏", "Begging...", f"*{ctx.author.display_name} holds out their hand...*")
         amt     = get_beg_earnings()
         new_bal = data["coins"] + amt
-        await update_user_data(user_id, {"coins": new_bal, "lastBeg": current_time})
+        await update_user_data(user_id, {"coins": new_bal})
+        
         await intro.edit(embed=result_embed(
             "🙏  Someone was generous!",
             f"You received **`{amt:,}` {LUNA_NAME}**!\n\n💰 New balance: `{new_bal:,}` {LUNA_NAME}",
