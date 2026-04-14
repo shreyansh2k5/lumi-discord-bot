@@ -10,9 +10,11 @@ from economy.transactions import (
     get_user_data, update_user_data,
     atomic_give, atomic_raid, atomic_purchase,
 )
+import time
 from economy.config import (
     DAILY_REWARD, BJ_MAX_BET, LUNA_NAME,
-    STARTING_BALANCE, PET_SHOP, RAID_SUCCESS_CHANCE, MAX_BET
+    STARTING_BALANCE, PET_SHOP, RAID_SUCCESS_CHANCE, MAX_BET,
+    DAILY_COOLDOWN, BEG_COOLDOWN, RAID_COOLDOWN, BANK_COOLDOWN
 )
 from economy.logic import (
     get_beg_earnings, process_flip,
@@ -82,13 +84,19 @@ class Economy(commands.Cog):
     # ── DAILY ─────────────────────────────────────────────────────
 
     @commands.hybrid_command(name="daily", description="Claim your daily coins 🎁")
-    @commands.cooldown(1, 86400, commands.BucketType.user)
     async def daily(self, ctx: commands.Context):
-        intro = await send_intro(ctx, "🎁", "Daily Reward", f"*Checking your account, {ctx.author.display_name}...*")
         user_id = str(ctx.author.id)
         data    = await get_user_data(user_id)
+        
+        current_time = time.time()
+        last_time = data.get("lastDaily", 0)
+        if current_time - last_time < DAILY_COOLDOWN:
+            wait_time = int(last_time + DAILY_COOLDOWN)
+            return await ctx.send(embed=discord.Embed(description=f"⏰ You've already claimed your daily reward! Try again <t:{wait_time}:R>.", color=discord.Color.red()), ephemeral=True)
+            
+        intro = await send_intro(ctx, "🎁", "Daily Reward", f"*Checking your account, {ctx.author.display_name}...*")
         new_bal = data["coins"] + DAILY_REWARD
-        await update_user_data(user_id, {"coins": new_bal})
+        await update_user_data(user_id, {"coins": new_bal, "lastDaily": current_time})
         await intro.edit(embed=result_embed(
             "🎁  Daily Reward Claimed!",
             f"**+`{DAILY_REWARD:,}` {LUNA_NAME}** added!\n\n💰 New balance: `{new_bal:,}` {LUNA_NAME}\n⏰ Come back in **24 hours**.",
@@ -98,13 +106,20 @@ class Economy(commands.Cog):
     # ── BEG ───────────────────────────────────────────────────────
 
     @commands.hybrid_command(name="beg", description="Beg for some coins 🙏")
-    @commands.cooldown(1, 300, commands.BucketType.user)
     async def beg(self, ctx: commands.Context):
+        user_id = str(ctx.author.id)
+        data    = await get_user_data(user_id)
+        
+        current_time = time.time()
+        last_time = data.get("lastBeg", 0)
+        if current_time - last_time < BEG_COOLDOWN:
+            wait_time = int(last_time + BEG_COOLDOWN)
+            return await ctx.send(embed=discord.Embed(description=f"⏰ Don't be greedy! You can beg again <t:{wait_time}:R>.", color=discord.Color.red()), ephemeral=True)
+
         intro = await send_intro(ctx, "🙏", "Begging...", f"*{ctx.author.display_name} holds out their hand...*")
         amt     = get_beg_earnings()
-        data    = await get_user_data(str(ctx.author.id))
         new_bal = data["coins"] + amt
-        await update_user_data(str(ctx.author.id), {"coins": new_bal})
+        await update_user_data(user_id, {"coins": new_bal, "lastBeg": current_time})
         await intro.edit(embed=result_embed(
             "🙏  Someone was generous!",
             f"You received **`{amt:,}` {LUNA_NAME}**!\n\n💰 New balance: `{new_bal:,}` {LUNA_NAME}",
@@ -170,20 +185,28 @@ class Economy(commands.Cog):
     # ── RAID ──────────────────────────────────────────────────────
 
     @commands.hybrid_command(name="raid", description="Steal coins from another user 🥷")
-    @commands.cooldown(1, 3600, commands.BucketType.user)
     async def raid(self, ctx: commands.Context, target: discord.User):
         if target.id == ctx.author.id:
-            ctx.command.reset_cooldown(ctx)
             return await ctx.send(embed=discord.Embed(description="❌ You can't raid yourself!", color=discord.Color.red()))
-        intro = await send_intro(ctx, "🥷", "Raid", f"*{ctx.author.display_name} sneaks toward {target.display_name}'s vault...*", color=discord.Color.dark_grey())
+            
         r_id, t_id = str(ctx.author.id), str(target.id)
-        r_d, t_d   = await get_user_data(r_id), await get_user_data(t_id)
-        if r_d["isBanked"] or t_d.get("isBanked"):
-            ctx.command.reset_cooldown(ctx)
+        r_d = await get_user_data(r_id)
+        
+        current_time = time.time()
+        last_time = r_d.get("lastRaid", 0)
+        if current_time - last_time < RAID_COOLDOWN:
+            wait_time = int(last_time + RAID_COOLDOWN)
+            return await ctx.send(embed=discord.Embed(description=f"⏰ You are resting from your last raid. Try again <t:{wait_time}:R>.", color=discord.Color.red()), ephemeral=True)
+
+        intro = await send_intro(ctx, "🥷", "Raid", f"*{ctx.author.display_name} sneaks toward {target.display_name}'s vault...*", color=discord.Color.dark_grey())
+        t_d = await get_user_data(t_id)
+        if r_d.get("isBanked") or t_d.get("isBanked"):
             return await intro.edit(embed=result_embed("🛡️  Raid Blocked!", "Safe Mode is active. No coins moved.", color=BLUE))
         success = random.random() < RAID_SUCCESS_CHANCE
         amt     = calculate_raid_result(r_d["coins"], t_d["coins"], success)
         await atomic_raid(r_id, t_id, amt, success)
+        
+        await update_user_data(r_id, {"lastRaid": current_time})
         if success:
             await intro.edit(embed=result_embed("🥷  Raid Successful!", f"You stole **`{amt:,}` {LUNA_NAME}** from {target.mention}!\n\n⏰ Next raid available in **1 hour**.", color=discord.Color.green(), author_name=ctx.author.display_name, author_icon=str(ctx.author.display_avatar.url)))
         else:
@@ -241,14 +264,22 @@ class Economy(commands.Cog):
     # ── BANK DEPOSIT ──────────────────────────────────────────────
 
     @commands.hybrid_command(name="bank_deposit", description="Activate Safe Mode 🛡️")
-    @commands.cooldown(1, 86400, commands.BucketType.user)
     async def bank_deposit(self, ctx: commands.Context):
-        data = await get_user_data(str(ctx.author.id))
+        user_id = str(ctx.author.id)
+        data = await get_user_data(user_id)
+        
+        current_time = time.time()
+        last_time = data.get("lastBankDeposit", 0)
+        
         if data.get("isBanked"):
-            ctx.command.reset_cooldown(ctx)
             return await ctx.send(embed=result_embed("🛡️  Already in Safe Mode", "You are already protected!", color=BLUE))
+            
+        if current_time - last_time < BANK_COOLDOWN:
+            wait_time = int(last_time + BANK_COOLDOWN)
+            return await ctx.send(embed=discord.Embed(description=f"⏰ Safe mode is on cooldown. You can deposit again <t:{wait_time}:R>.", color=discord.Color.red()), ephemeral=True)
+            
         intro = await send_intro(ctx, "🛡️", "Activating Safe Mode", f"*Locking {ctx.author.display_name}'s vault...*", color=BLUE)
-        await update_user_data(str(ctx.author.id), {"isBanked": True})
+        await update_user_data(user_id, {"isBanked": True, "lastBankDeposit": current_time})
         await intro.edit(embed=result_embed("🛡️  Safe Mode Activated!", "Your coins are now **protected from raids**.\n⚠️ You also cannot raid others.\n⏰ Withdrawable after **12 hours**.", color=BLUE, author_name=ctx.author.display_name, author_icon=str(ctx.author.display_avatar.url)))
 
     # ── BANK WITHDRAW ─────────────────────────────────────────────
