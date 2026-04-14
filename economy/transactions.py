@@ -50,24 +50,27 @@ async def atomic_give(sender_id: str, receiver_id: str, amount: int) -> tuple[bo
         sender_snap   = await sender_ref.get(transaction=tx)
         receiver_snap = await receiver_ref.get(transaction=tx)
         
-        sender_coins = sender_snap.get("coins") or 0
-        receiver_coins = receiver_snap.get("coins") or 0
+        sender_data = sender_snap.to_dict() or {}
+        receiver_data = receiver_snap.to_dict() or {}
+        
+        sender_coins = sender_data.get("coins", 0)
+        receiver_coins = receiver_data.get("coins", STARTING_BALANCE)
 
         if sender_coins < amt:
             return False, "You don't have enough coins!"
 
         today_str = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
 
-        sender_date = sender_snap.get("dailyTransferDate") or ""
-        sender_sent = sender_snap.get("dailySent") or 0
+        sender_date = sender_data.get("dailyTransferDate", "")
+        sender_sent = sender_data.get("dailySent", 0)
         if sender_date != today_str:
             sender_sent = 0
             
         if sender_sent + amt > DAILY_TRANSFER_LIMIT:
             return False, f"You can only send up to {DAILY_TRANSFER_LIMIT:,} coins per day!"
 
-        receiver_date = receiver_snap.get("dailyTransferDate") or ""
-        receiver_received = receiver_snap.get("dailyReceived") or 0
+        receiver_date = receiver_data.get("dailyTransferDate", "")
+        receiver_received = receiver_data.get("dailyReceived", 0)
         if receiver_date != today_str:
             receiver_received = 0
             
@@ -90,8 +93,8 @@ async def atomic_give(sender_id: str, receiver_id: str, amount: int) -> tuple[bo
         if receiver_date != today_str:
             receiver_updates["dailySent"] = 0
 
-        tx.update(sender_ref, sender_updates)
-        tx.update(receiver_ref, receiver_updates)
+        tx.set(sender_ref, sender_updates, merge=True)
+        tx.set(receiver_ref, receiver_updates, merge=True)
         return True, ""
 
     sender_ref   = db.collection("users").document(sender_id)
@@ -107,15 +110,19 @@ async def atomic_raid(raider_id: str, target_id: str, amount: int, success: bool
     async def _raid(tx, raider_ref, target_ref, amt, win):
         raider_snap = await raider_ref.get(transaction=tx)
         target_snap = await target_ref.get(transaction=tx)
-        raider_coins = raider_snap.get("coins")
-        target_coins = target_snap.get("coins")
+        
+        r_data = raider_snap.to_dict() or {}
+        t_data = target_snap.to_dict() or {}
+        
+        raider_coins = r_data.get("coins", STARTING_BALANCE)
+        target_coins = t_data.get("coins", STARTING_BALANCE)
 
         if win:
-            tx.update(raider_ref, {"coins": raider_coins + amt})
-            tx.update(target_ref, {"coins": target_coins - amt})
+            tx.set(raider_ref, {"coins": raider_coins + amt}, merge=True)
+            tx.set(target_ref, {"coins": target_coins - amt}, merge=True)
         else:
-            tx.update(raider_ref, {"coins": raider_coins - amt})
-            tx.update(target_ref, {"coins": target_coins + amt})
+            tx.set(raider_ref, {"coins": raider_coins - amt}, merge=True)
+            tx.set(target_ref, {"coins": target_coins + amt}, merge=True)
         return True
 
     raider_ref = db.collection("users").document(raider_id)
@@ -133,10 +140,10 @@ async def atomic_purchase(user_id: str, item_name: str, price: int) -> bool:
         data = snap.to_dict() or {}
         if data.get("coins", 0) < cost:
             return False
-        tx.update(user_ref, {
+        tx.set(user_ref, {
             "coins": data.get("coins", 0) - cost,
             "pets":  data.get("pets", []) + [item],
-        })
+        }, merge=True)
         return True
 
     user_ref = db.collection("users").document(user_id)
