@@ -249,7 +249,7 @@ class Economy(commands.Cog):
             return await ctx.send(embed=result_embed("🛡️  Already in Safe Mode", "You are already protected!", color=BLUE))
         intro = await send_intro(ctx, "🛡️", "Activating Safe Mode", f"*Locking {ctx.author.display_name}'s vault...*", color=BLUE)
         await update_user_data(str(ctx.author.id), {"isBanked": True})
-        await intro.edit(embed=result_embed("🛡️  Safe Mode Activated!", "Your coins are now **protected from raids**.\n⚠️ You also cannot raid others.\n⏰ Withdrawable after **24 hours**.", color=BLUE, author_name=ctx.author.display_name, author_icon=str(ctx.author.display_avatar.url)))
+        await intro.edit(embed=result_embed("🛡️  Safe Mode Activated!", "Your coins are now **protected from raids**.\n⚠️ You also cannot raid others.\n⏰ Withdrawable after **12 hours**.", color=BLUE, author_name=ctx.author.display_name, author_icon=str(ctx.author.display_avatar.url)))
 
     # ── BANK WITHDRAW ─────────────────────────────────────────────
 
@@ -261,7 +261,7 @@ class Economy(commands.Cog):
 
     # ── SHOP ──────────────────────────────────────────────────────
 
-    @commands.hybrid_group(name="shop", fallback="list")
+    @commands.hybrid_group(name="shop", fallback="list", description="Buy pets with your coins 🐾")
     async def shop(self, ctx: commands.Context):
         intro = await send_intro(ctx, "🐾", "Lumi's Pet Shop", "*Browsing the shop...*")
         sorted_pets = sorted(PET_SHOP.items(), key=lambda x: x[1]["price"])
@@ -277,7 +277,7 @@ class Economy(commands.Cog):
         e.set_footer(text="Lumi Economy ✨")
         await intro.edit(embed=e)
 
-    @shop.command(name="buy")
+    @shop.command(name="buy", description="Buy a pet from the shop 🐾")
     async def buy_pet(self, ctx: commands.Context, pet: str):
         pet = pet.lower().strip()
         if pet not in PET_SHOP:
