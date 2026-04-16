@@ -26,10 +26,22 @@ def process_roll(amount: int) -> tuple[int, bool, int]:
 def calculate_raid_result(raider_coins: int, target_coins: int, success: bool) -> int:
     """
     Calculates how many coins move in a raid.
-    The maximum amount is 20% of the mean of both persons' balance.
+    On success, steals up to 20% of the mean wallet — but never more than the
+    target actually has (prevents negative balances).
+    On failure, the raider pays the target a random penalty up to 10% of their
+    own wallet as hush money.
     """
-    mean_balance = (raider_coins + target_coins) / 2.0
-    limit = int(mean_balance * RAID_MAX_STEAL)
-    if limit <= 0:
-        return 0
-    return random.randint(1, limit)
+    if success:
+        mean_balance = (raider_coins + target_coins) / 2.0
+        limit = int(mean_balance * RAID_MAX_STEAL)
+        # Never steal more than the target owns
+        limit = min(limit, target_coins)
+        if limit <= 0:
+            return 0
+        return random.randint(1, limit)
+    else:
+        # Failure: raider pays a penalty of up to 10% of their own wallet
+        penalty_limit = int(raider_coins * 0.10)
+        if penalty_limit <= 0:
+            return 0
+        return random.randint(1, penalty_limit)

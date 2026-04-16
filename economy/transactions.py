@@ -118,11 +118,15 @@ async def atomic_raid(raider_id: str, target_id: str, amount: int, success: bool
         target_coins = t_data.get("coins", STARTING_BALANCE)
 
         if win:
-            tx.set(raider_ref, {"coins": raider_coins + amt}, merge=True)
-            tx.set(target_ref, {"coins": target_coins - amt}, merge=True)
+            # Safety clamp: never steal more than the target currently has
+            actual_amt = min(amt, max(target_coins, 0))
+            tx.set(raider_ref, {"coins": raider_coins + actual_amt}, merge=True)
+            tx.set(target_ref, {"coins": target_coins - actual_amt}, merge=True)
         else:
-            tx.set(raider_ref, {"coins": raider_coins - amt}, merge=True)
-            tx.set(target_ref, {"coins": target_coins + amt}, merge=True)
+            # Safety clamp: never pay more penalty than the raider has
+            actual_amt = min(amt, max(raider_coins, 0))
+            tx.set(raider_ref, {"coins": raider_coins - actual_amt}, merge=True)
+            tx.set(target_ref, {"coins": target_coins + actual_amt}, merge=True)
         return True
 
     raider_ref = db.collection("users").document(raider_id)
