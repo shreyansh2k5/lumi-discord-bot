@@ -48,6 +48,23 @@ class AdminTools(commands.Cog):
         await ctx.message.delete()
         await ctx.send(f"🧹 Reset profile for **{user.name}**.", delete_after=5)
 
+    @commands.command(name="purge", hidden=True)
+    async def purge(self, ctx: commands.Context, amount: int):
+        """Delete recent messages. Max 150. Requires Manage Messages permission."""
+        if not ctx.author.guild_permissions.manage_messages:
+            await ctx.send("❌ You need Manage Messages permission to use this command.", delete_after=5)
+            return
+        if amount < 1:
+            await ctx.send("❌ Provide a positive number of messages to delete.", delete_after=5)
+            return
+        limit = min(amount, 150)
+        # Delete the command invocation message first
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+        deleted = await ctx.channel.purge(limit=limit)
+        await ctx.send(f"✅ Deleted {len(deleted)} messages.", delete_after=5)
 
 async def setup(bot):
     await bot.add_cog(AdminTools(bot))

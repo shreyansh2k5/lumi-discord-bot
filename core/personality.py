@@ -88,7 +88,7 @@ def get_system_prompt(
         f"To use them, you MUST output their exact names surrounded by colons, e.g., :emoji_name:. "
         f"Do NOT use angle brackets or IDs."
         if server_emojis
-        else "\nUse standard emojis (✨ 💖 🌸 😊 👀 🔥 💀 🥺 etc.) expressively."
+        else "\nUse standard emojis (✨ 💖 🌸 😊 👀 🔥 🥀 🥺 etc.) expressively."
     )
 
     return (
