@@ -52,7 +52,7 @@ class Moderation(commands.Cog):
         except Exception:
             pass
         deleted = await ctx.channel.purge(limit=limit)
-        await ctx.send(f"✅ Deleted {len(deleted)} messages.")
+        await ctx.send(f"✅ Deleted {len(deleted)} messages.", delete_after=5)
 
     @app_commands.command(name="unmute", description="Unmute a user 🔊")
     @app_commands.checks.has_permissions(moderate_members=True)
