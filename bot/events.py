@@ -8,7 +8,7 @@ from discord.ext import commands
 from bot.client import bot, channel_last_message
 import moderation.automod as automod
 from moderation.automod import check_bad_words, is_role_exempt, ensure_guild_settings_in_cache
-from services.ai import query_groq
+from services.ai import query_model
 from services.memory import get_memory, add_to_memory
 from config import AI_MAX_INPUT_CHARS
 
@@ -176,7 +176,7 @@ async def on_message(message: discord.Message):
         history  = get_memory(user_id)
         messages = history + [{"role": "user", "content": full_user_content}]
 
-        response = await query_groq(
+        response = await query_model(
             messages=messages,
             server_emojis=emoji_str,
             server_name=server_name,

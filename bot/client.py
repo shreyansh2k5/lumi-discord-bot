@@ -7,7 +7,7 @@ import discord
 from discord.ext import commands, tasks
 
 from config import COMMAND_PREFIX
-from services.ai import query_groq as query_model
+from services.ai import query_model
 import moderation.automod as automod
 
 # Per-channel last-message timestamp: {channel_id: float}

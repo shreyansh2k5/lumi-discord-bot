@@ -20,7 +20,7 @@ async def _get_session() -> aiohttp.ClientSession:
     return _session
 
 
-async def query_ai(
+async def query_model(
     messages: list[dict],
     server_emojis: str = "",
     server_name: str = "",
