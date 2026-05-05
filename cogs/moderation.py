@@ -37,22 +37,15 @@ class Moderation(commands.Cog):
 
     @app_commands.command(name="purge", description="Delete recent messages.")
     @app_commands.checks.has_permissions(manage_messages=True)
-    async def purge(self, ctx: discord.Interaction, amount: int):
+    async def purge(self, interaction: discord.Interaction, amount: int):
         """Delete recent messages. Max 150. Requires Manage Messages permission."""
-        if not ctx.author.guild_permissions.manage_messages:
-            await ctx.send("❌ You need Manage Messages permission to use this command.", delete_after=5)
-            return
         if amount < 1:
-            await ctx.send("❌ Provide a positive number of messages to delete.", delete_after=5)
+            await interaction.response.send_message("❌ Provide a positive number of messages to delete.", ephemeral=True)
             return
         limit = min(amount, 150)
-        # Delete the command invocation message first
-        try:
-            await ctx.message.delete()
-        except Exception:
-            pass
-        deleted = await ctx.channel.purge(limit=limit)
-        await ctx.send(f"✅ Deleted {len(deleted)} messages.", delete_after=5)
+        await interaction.response.defer(ephemeral=True)
+        deleted = await interaction.channel.purge(limit=limit)
+        await interaction.followup.send(f"✅ Deleted {len(deleted)} messages.", ephemeral=True)
 
     @app_commands.command(name="unmute", description="Unmute a user 🔊")
     @app_commands.checks.has_permissions(moderate_members=True)
