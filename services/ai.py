@@ -1,6 +1,5 @@
 # services/ai.py
-# Wrapper around Groq API.
-# Uses llama-3.1-8b-instant — extremely fast and efficient.
+# OpenRouter API wrapper (Owl model)
 
 import os
 import aiohttp
@@ -8,8 +7,8 @@ import aiohttp
 from core.personality import get_system_prompt, get_temperature
 from config import AI_MAX_TOKENS
 
-MODEL_ID = "llama-3.1-8b-instant"
-API_URL  = "https://api.groq.com/openai/v1/chat/completions"
+MODEL_ID = "openrouter/owl-alpha"
+API_URL  = "https://openrouter.ai/api/v1/chat/completions"
 
 _session: aiohttp.ClientSession | None = None
 
@@ -21,7 +20,7 @@ async def _get_session() -> aiohttp.ClientSession:
     return _session
 
 
-async def query_groq(
+async def query_ai(
     messages: list[dict],
     server_emojis: str = "",
     server_name: str = "",
@@ -29,11 +28,12 @@ async def query_groq(
     time_of_day: str = "",
 ) -> str:
     """
-    Sends conversation history to Groq API using the OpenAI-compatible endpoint.
+    Sends conversation history to OpenRouter (Owl model).
     """
-    api_key = os.getenv("GROQ_API_KEY")
+
+    api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
-        print("[ERROR] GROQ_API_KEY not set.")
+        print("[ERROR] OPENROUTER_API_KEY not set.")
         return "⚠️ I lost my API key... please check my settings!"
 
     system_prompt = get_system_prompt(
@@ -43,30 +43,31 @@ async def query_groq(
         time_of_day=time_of_day,
     )
 
-    groq_messages = [{"role": "system", "content": system_prompt}]
-    
-    # Copy conversation history
+    # Build message list
+    ai_messages = [{"role": "system", "content": system_prompt}]
+
     for msg in messages:
         content = msg.get("content", "").strip()
         if content:
-            # Ensure the role is either user or assistant (Groq strictness)
             role = "assistant" if msg["role"] == "assistant" else "user"
-            groq_messages.append({"role": role, "content": content})
+            ai_messages.append({"role": role, "content": content})
 
-    # Groq works best when the final prompt is from the user
-    if not groq_messages or groq_messages[-1]["role"] != "user":
-        groq_messages.append({"role": "user", "content": "Continue."})
+    # Ensure last message is user (important for OpenRouter too)
+    if not ai_messages or ai_messages[-1]["role"] != "user":
+        ai_messages.append({"role": "user", "content": "Continue."})
 
     body = {
         "model": MODEL_ID,
-        "messages": groq_messages,
+        "messages": ai_messages,
         "temperature": get_temperature(),
         "max_tokens": AI_MAX_TOKENS,
     }
 
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://lumi-bot.app",  # can be anything
+        "X-Title": "Lumi Discord Bot"
     }
 
     try:
@@ -78,8 +79,8 @@ async def query_groq(
                 return text or "💬 Hmm... I didn't quite catch that."
             else:
                 error = await resp.text()
-                print(f"[ERROR] Groq API {resp.status}: {error}")
+                print(f"[ERROR] OpenRouter {resp.status}: {error}")
                 return "⚠️ My brain is a bit fuzzy right now..."
     except Exception as e:
-        print(f"[ERROR] Groq request failed: {e}")
+        print(f"[ERROR] OpenRouter request failed: {e}")
         return "💥 Lumi crashed into a wall of code!"
