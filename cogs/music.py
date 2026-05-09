@@ -378,7 +378,7 @@ class Music(commands.Cog):
         else:
             await self._play_next(ctx)
 
-    @commands.hybrid_command(name="search", description="Search SoundCloud and pick a song")
+    @commands.command(name="search")
     async def search(self, ctx: commands.Context, *, query: str) -> None:
         if not ctx.author.voice:
             return await ctx.send("❌ Join a voice channel first.")
@@ -399,7 +399,7 @@ class Music(commands.Cog):
         embed.set_footer(text="Pick a song from the dropdown · expires in 60 s")
         await ctx.send(embed=embed, view=SearchView(self, ctx, results))
 
-    @commands.hybrid_command(name="skip", description="Skip the current song")
+    @commands.command(name="skip")
     async def skip(self, ctx: commands.Context) -> None:
         queue = self.get_queue(ctx.guild.id)
         if ctx.voice_client and (ctx.voice_client.is_playing() or ctx.voice_client.is_paused()):
@@ -409,7 +409,7 @@ class Music(commands.Cog):
         else:
             await ctx.send("❌ Nothing is playing.")
 
-    @commands.hybrid_command(name="pause", description="Pause playback")
+    @commands.command(name="pause")
     async def pause(self, ctx: commands.Context) -> None:
         if ctx.voice_client and ctx.voice_client.is_playing():
             ctx.voice_client.pause()
@@ -430,7 +430,7 @@ class Music(commands.Cog):
         else:
             await ctx.send("❌ Nothing is playing.")
 
-    @commands.hybrid_command(name="resume", description="Resume playback")
+    @commands.command(name="resume")
     async def resume(self, ctx: commands.Context) -> None:
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
@@ -451,7 +451,7 @@ class Music(commands.Cog):
         else:
             await ctx.send("❌ Nothing is paused.")
 
-    @commands.hybrid_command(name="queue", description="Show the current queue")
+    @commands.command(name="queue")
     async def queue_cmd(self, ctx: commands.Context) -> None:
         queue = self.get_queue(ctx.guild.id)
         if not queue.queue and not queue.current:
@@ -467,7 +467,7 @@ class Music(commands.Cog):
 
         await ctx.send(embed=discord.Embed(title="📋  Queue", description="\n".join(lines), color=PINK))
 
-    @commands.hybrid_command(name="nowplaying", aliases=["np"], description="Show current song")
+    @commands.command(name="nowplaying", aliases=["np"])
     async def nowplaying(self, ctx: commands.Context) -> None:
         queue = self.get_queue(ctx.guild.id)
         vc = ctx.voice_client
@@ -487,7 +487,7 @@ class Music(commands.Cog):
         view = MusicControlView(self, ctx)
         queue.np_msg = await ctx.send(embed=embed, view=view)
 
-    @commands.hybrid_command(name="stop", description="Stop playback and disconnect")
+    @commands.command(name="stop")
     async def stop(self, ctx: commands.Context) -> None:
         queue = self.get_queue(ctx.guild.id)
         queue.clear()
@@ -495,7 +495,7 @@ class Music(commands.Cog):
             await ctx.voice_client.disconnect()
         await ctx.send("⏹ Stopped and disconnected.")
 
-    @commands.hybrid_command(name="volume", description="Set volume (10–200)")
+    @commands.command(name="volume")
     async def volume(self, ctx: commands.Context, vol: int) -> None:
         queue = self.get_queue(ctx.guild.id)
         vc = ctx.voice_client

@@ -83,7 +83,7 @@ class Economy(commands.Cog):
 
     # ── DAILY ─────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="daily", description="Claim your daily coins 🎁")
+    @commands.command(name="daily")
     async def daily(self, ctx: commands.Context):
         user_id = str(ctx.author.id)
         data    = await get_user_data(user_id)
@@ -105,7 +105,7 @@ class Economy(commands.Cog):
 
     # ── BEG ───────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="beg", description="Beg for some coins 🙏")
+    @commands.command(name="beg")
     @commands.cooldown(1, 300, commands.BucketType.user)
     async def beg(self, ctx: commands.Context):
         intro = await send_intro(ctx, "🙏", "Begging...", f"*{ctx.author.display_name} holds out their hand...*")
@@ -125,7 +125,7 @@ class Economy(commands.Cog):
 
     # ── FLIP ──────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="flip", description="Flip a coin — double or nothing 🪙")
+    @commands.command(name="flip")
     async def flip(self, ctx: commands.Context, amount: int):
         data = await get_user_data(str(ctx.author.id))
         if amount <= 0 or data["coins"] < amount:
@@ -146,7 +146,7 @@ class Economy(commands.Cog):
 
     # ── ROLL ──────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="roll", description="Roll a dice — jackpot on 6 🎲")
+    @commands.command(name="roll")
     async def roll(self, ctx: commands.Context, amount: int):
         data = await get_user_data(str(ctx.author.id))
         if amount <= 0 or data["coins"] < amount:
@@ -164,7 +164,7 @@ class Economy(commands.Cog):
 
     # ── BLACKJACK ─────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="blackjack", description="Play a game of Blackjack 🃏")
+    @commands.command(name="blackjack")
     async def blackjack(self, ctx: commands.Context, bet: int):
         data = await get_user_data(str(ctx.author.id))
         if bet < 10 or bet > BJ_MAX_BET or data["coins"] < bet:
@@ -181,7 +181,7 @@ class Economy(commands.Cog):
 
     # ── RAID ──────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="raid", description="Steal coins from another user 🥷")
+    @commands.command(name="raid")
     async def raid(self, ctx: commands.Context, target: discord.User):
         if target.id == ctx.author.id:
             return await ctx.send(embed=discord.Embed(description="❌ You can't raid yourself!", color=discord.Color.red()))
@@ -211,7 +211,7 @@ class Economy(commands.Cog):
 
     # ── GIVE ──────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="give", description="Send coins to another user 💸")
+    @commands.command(name="give")
     async def give(self, ctx: commands.Context, target: discord.User, amount: int):
         if amount <= 0:
             return await ctx.send(embed=discord.Embed(description="❌ Amount must be positive.", color=discord.Color.red()))
@@ -228,7 +228,7 @@ class Economy(commands.Cog):
 
     # ── BALANCE ───────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="balance", description="Check your coin balance 💰")
+    @commands.command(name="balance")
     async def balance(self, ctx: commands.Context, user: discord.User = None):
         target = user or ctx.author
         intro  = await send_intro(ctx, "💰", "Checking Balance", f"*Fetching {target.display_name}'s account...*")
@@ -260,7 +260,7 @@ class Economy(commands.Cog):
 
     # ── BANK DEPOSIT ──────────────────────────────────────────────
 
-    @commands.hybrid_command(name="bank_deposit", description="Activate Safe Mode 🛡️")
+    @commands.command(name="bank_deposit")
     async def bank_deposit(self, ctx: commands.Context):
         user_id = str(ctx.author.id)
         data = await get_user_data(user_id)
@@ -281,7 +281,7 @@ class Economy(commands.Cog):
 
     # ── BANK WITHDRAW ─────────────────────────────────────────────
 
-    @commands.hybrid_command(name="bank_withdraw", description="Deactivate Safe Mode 🔓")
+    @commands.command(name="bank_withdraw")
     async def bank_withdraw(self, ctx: commands.Context):
         intro = await send_intro(ctx, "🔓", "Deactivating Safe Mode", f"*Unlocking {ctx.author.display_name}'s vault...*", color=GOLD)
         await update_user_data(str(ctx.author.id), {"isBanked": False})
@@ -289,7 +289,7 @@ class Economy(commands.Cog):
 
     # ── SHOP ──────────────────────────────────────────────────────
 
-    @commands.hybrid_group(name="shop", fallback="list", description="Buy pets with your coins 🐾")
+    @commands.group(name="shop", invoke_without_command=True)
     async def shop(self, ctx: commands.Context):
         intro = await send_intro(ctx, "🐾", "Lumi's Pet Shop", "*Browsing the shop...*")
         sorted_pets = sorted(PET_SHOP.items(), key=lambda x: x[1]["price"])
@@ -320,7 +320,7 @@ class Economy(commands.Cog):
 
     # ── LEADERBOARD ───────────────────────────────────────────────
 
-    @commands.hybrid_command(name="leaderboard", description="Top 10 richest users 🏆")
+    @commands.command(name="leaderboard")
     async def leaderboard(self, ctx: commands.Context):
         intro = await send_intro(ctx, "🏆", "Loading Leaderboard", "*Counting everyone's coins...*", color=GOLD)
         docs  = await db.collection("users").order_by("coins", direction="DESCENDING").limit(10).get()

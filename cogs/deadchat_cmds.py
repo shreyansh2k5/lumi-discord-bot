@@ -6,130 +6,227 @@ from discord.ext import commands
 import moderation.automod as automod
 
 
+# ── Interval preset options ─────────────────────────────────────────
+INTERVAL_PRESETS = [
+    ("10 minutes",  10),
+    ("30 minutes",  30),
+    ("1 hour",      60),
+    ("2 hours",    120),
+    ("3 hours",    180),
+    ("6 hours",    360),
+    ("12 hours",   720),
+    ("24 hours",  1440),
+]
+
+
+def _fmt_minutes(minutes: int) -> str:
+    if minutes >= 60 and minutes % 60 == 0:
+        return f"{minutes // 60}h"
+    elif minutes >= 60:
+        return f"{minutes // 60}h {minutes % 60}m"
+    return f"{minutes}m"
+
+
+def _build_embed(guild: discord.Guild, gs: dict, *, saved: bool = False) -> discord.Embed:
+    ids = automod.get_revive_channels(guild.id, gs)
+    if ids:
+        parts = []
+        for cid in ids:
+            ch = guild.get_channel(cid)
+            parts.append(ch.mention if ch else f"~~`{cid}`~~ *(deleted)*")
+        channels_str = "\n".join(f"• {p}" for p in parts)
+    else:
+        channels_str = "*None configured*"
+
+    minutes = automod.get_revive_threshold(guild.id, gs)
+    threshold_str = _fmt_minutes(minutes)
+
+    desc = (
+        "✅ **Settings saved!** Here's your updated configuration."
+        if saved
+        else "Use the menus below to update settings, then press **💾 Save**.\nUnchanged fields keep their current values."
+    )
+
+    embed = discord.Embed(
+        title="💬  Dead Chat Configuration",
+        description=desc,
+        color=discord.Color.from_rgb(180, 140, 255),
+    )
+    embed.add_field(
+        name="⏱️ Silence Interval",
+        value=f"`{threshold_str}` of inactivity before Lumi revives chat",
+        inline=False,
+    )
+    embed.add_field(
+        name="📢 Revival Channels",
+        value=channels_str,
+        inline=False,
+    )
+    if not saved:
+        embed.set_footer(text="Changes apply only when you click Save  •  Times out in 2 minutes")
+    return embed
+
+
+# ── UI Components ───────────────────────────────────────────────────
+
+class IntervalSelect(discord.ui.Select):
+    def __init__(self, current_minutes: int):
+        options = [
+            discord.SelectOption(
+                label=label,
+                value=str(value),
+                default=(value == current_minutes),
+            )
+            for label, value in INTERVAL_PRESETS
+        ]
+        super().__init__(
+            placeholder="⏱️ Change silence interval…",
+            min_values=1,
+            max_values=1,
+            options=options,
+            row=1,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        self.view.pending_interval = int(self.values[0])
+        for opt in self.options:
+            opt.default = (opt.value == self.values[0])
+        await interaction.response.edit_message(view=self.view)
+
+
+class AddChannelSelect(discord.ui.ChannelSelect):
+    def __init__(self):
+        super().__init__(
+            placeholder="➕ Add revival channel(s)…",
+            min_values=1,
+            max_values=25,
+            channel_types=[discord.ChannelType.text],
+            row=2,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        self.view.pending_add_channels = [c.id for c in self.values]
+        await interaction.response.edit_message(view=self.view)
+
+
+class RemoveChannelSelect(discord.ui.Select):
+    def __init__(self, guild: discord.Guild, current_ids: list[int]):
+        if current_ids:
+            options = []
+            for cid in current_ids:
+                ch = guild.get_channel(cid)
+                name = f"#{ch.name}" if ch else f"deleted-{cid}"
+                options.append(discord.SelectOption(label=name, value=str(cid)))
+            disabled = False
+        else:
+            options = [discord.SelectOption(label="No channels configured", value="__none__")]
+            disabled = True
+
+        super().__init__(
+            placeholder="🗑️ Remove revival channel(s)…",
+            min_values=1,
+            max_values=len(options),
+            options=options,
+            disabled=disabled,
+            row=3,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        self.view.pending_remove_channels = [
+            int(v) for v in self.values if v != "__none__"
+        ]
+        await interaction.response.edit_message(view=self.view)
+
+
+class SaveButton(discord.ui.Button):
+    def __init__(self):
+        super().__init__(
+            label="💾  Save Settings",
+            style=discord.ButtonStyle.success,
+            row=4,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.defer()
+        view: DeadChatConfigView = self.view
+
+        guild_id = interaction.guild_id
+        await automod.ensure_guild_settings_in_cache(guild_id)
+        gs = automod._guild_settings_cache.get(guild_id)
+
+        # Apply pending changes
+        if view.pending_interval is not None:
+            await automod.set_revive_threshold(guild_id, view.pending_interval, gs)
+
+        for cid in view.pending_add_channels:
+            await automod.add_revive_channel(guild_id, cid, gs)
+
+        for cid in view.pending_remove_channels:
+            await automod.remove_revive_channel(guild_id, cid, gs)
+
+        # Disable all components and stop the view
+        for item in view.children:
+            item.disabled = True
+        view.stop()
+
+        embed = _build_embed(interaction.guild, gs, saved=True)
+        await interaction.edit_original_response(embed=embed, view=view)
+
+
+# ── View ────────────────────────────────────────────────────────────
+
+class DeadChatConfigView(discord.ui.View):
+    def __init__(self, guild: discord.Guild, gs: dict, interaction: discord.Interaction):
+        super().__init__(timeout=120)
+        self.interaction = interaction
+        self.pending_interval: int | None = None
+        self.pending_add_channels: list[int] = []
+        self.pending_remove_channels: list[int] = []
+
+        current_minutes = automod.get_revive_threshold(guild.id, gs)
+        current_channels = automod.get_revive_channels(guild.id, gs)
+
+        self.add_item(IntervalSelect(current_minutes))
+        self.add_item(AddChannelSelect())
+        self.add_item(RemoveChannelSelect(guild, current_channels))
+        self.add_item(SaveButton())
+
+    async def on_timeout(self):
+        for item in self.children:
+            item.disabled = True
+        try:
+            await self.interaction.edit_original_response(view=self)
+        except Exception:
+            pass
+
+
+# ── Cog ─────────────────────────────────────────────────────────────
+
 class DeadChatCmds(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    deadchat_group = app_commands.Group(name="deadchat", description="Configure dead-chat revival channels. 💬")
-
-    @deadchat_group.command(name="add", description="Allow Lumi to revive dead chat in a channel")
+    @app_commands.command(
+        name="deadchat_configuration",
+        description="View and configure Lumi's dead-chat revival settings 💬",
+    )
     @app_commands.checks.has_permissions(manage_guild=True)
-    @app_commands.describe(channel="Channel Lumi should message when chat goes quiet")
-    async def add_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
+    async def deadchat_configuration(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         await automod.ensure_guild_settings_in_cache(interaction.guild_id)
         gs = automod._guild_settings_cache.get(interaction.guild_id)
-        if await automod.add_revive_channel(interaction.guild_id, channel.id, gs):
-            await interaction.followup.send(f"✅ Lumi will revive dead chat in {channel.mention}!", ephemeral=True)
-        else:
-            await interaction.followup.send(f"⚠️ {channel.mention} is already in the list.", ephemeral=True)
 
-    @deadchat_group.command(name="remove", description="Stop Lumi from messaging in a channel")
-    @app_commands.checks.has_permissions(manage_guild=True)
-    @app_commands.describe(channel="Channel to remove")
-    async def remove_channel(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        await interaction.response.defer(ephemeral=True)
-        await automod.ensure_guild_settings_in_cache(interaction.guild_id)
-        gs = automod._guild_settings_cache.get(interaction.guild_id)
-        if await automod.remove_revive_channel(interaction.guild_id, channel.id, gs):
-            await interaction.followup.send(f"🗑️ Removed {channel.mention} from the dead chat list.", ephemeral=True)
-        else:
-            await interaction.followup.send(f"⚠️ {channel.mention} wasn't in the list.", ephemeral=True)
+        embed = _build_embed(interaction.guild, gs)
+        view = DeadChatConfigView(interaction.guild, gs, interaction)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
-    @deadchat_group.command(name="view", description="See all configured revival channels and the current interval")
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def view_channels(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        await automod.ensure_guild_settings_in_cache(interaction.guild_id)
-        gs  = automod._guild_settings_cache.get(interaction.guild_id)
-        
-        minutes = automod.get_revive_threshold(interaction.guild_id, gs)
-        if minutes >= 60 and minutes % 60 == 0:
-            threshold_str = f"{minutes // 60}h"
-        elif minutes >= 60:
-            threshold_str = f"{minutes // 60}h {minutes % 60}m"
-        else:
-            threshold_str = f"{minutes}m"
-            
-        ids = automod.get_revive_channels(interaction.guild_id, gs)
-        if not ids:
-            return await interaction.followup.send(f"💤 No channels set.\n⏱️ Interval: **{threshold_str}**.\nUse `/deadchat add` to configure a channel.", ephemeral=True)
-            
-        mentions = []
-        for cid in ids:
-            ch = interaction.guild.get_channel(cid)
-            mentions.append(ch.mention if ch else f"~~`{cid}`~~ *(deleted)*")
-            
-        msg = f"💬 Revival channels:\n" + "\n".join(f"• {m}" for m in mentions)
-        msg += f"\n\n⏱️ Current Interval: **{threshold_str}**"
-        await interaction.followup.send(msg, ephemeral=True)
-
-
-    @deadchat_group.command(name="interval", description="Set how long chat must be dead before Lumi revives it ⏱️")
-    @app_commands.checks.has_permissions(manage_guild=True)
-    @app_commands.describe(minutes="Minutes of silence before Lumi sends a revival message (min: 10, max: 1440)")
-    async def set_interval(self, interaction: discord.Interaction, minutes: int):
-        await interaction.response.defer(ephemeral=True)
-
-        if minutes < 10:
-            return await interaction.followup.send(
-                "❌ Minimum interval is **10 minutes**.", ephemeral=True
+    @deadchat_configuration.error
+    async def _config_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.MissingPermissions):
+            await interaction.response.send_message(
+                "❌ You need the **Manage Server** permission to use this command.",
+                ephemeral=True,
             )
-        if minutes > 1440:
-            return await interaction.followup.send(
-                "❌ Maximum interval is **1440 minutes** (24 hours).", ephemeral=True
-            )
-
-        await automod.ensure_guild_settings_in_cache(interaction.guild_id)
-        gs = automod._guild_settings_cache.get(interaction.guild_id)
-        await automod.set_revive_threshold(interaction.guild_id, minutes, gs)
-
-        # Format a human-readable label
-        if minutes >= 60 and minutes % 60 == 0:
-            label = f"{minutes // 60}h"
-        elif minutes >= 60:
-            label = f"{minutes // 60}h {minutes % 60}m"
-        else:
-            label = f"{minutes}m"
-
-        await interaction.followup.send(
-            f"⏱️ Dead chat interval set to **{label}**."
-            f"Lumi will revive chat after **{minutes} minutes** of silence.",
-            ephemeral=True
-        )
-
-    @deadchat_group.command(name="settings", description="View all dead chat settings for this server 📋")
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def view_settings(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        await automod.ensure_guild_settings_in_cache(interaction.guild_id)
-        gs = automod._guild_settings_cache.get(interaction.guild_id)
-
-        # Channels
-        ids = automod.get_revive_channels(interaction.guild_id, gs)
-        if ids:
-            channel_list = []
-            for cid in ids:
-                ch = interaction.guild.get_channel(cid)
-                channel_list.append(ch.mention if ch else f"~~`{cid}`~~ *(deleted)*")
-            channels_str = ", ".join(channel_list)
-        else:
-            channels_str = "*None set — use `/deadchat add`*"
-
-        # Threshold
-        minutes = automod.get_revive_threshold(interaction.guild_id, gs)
-        if minutes >= 60 and minutes % 60 == 0:
-            threshold_str = f"{minutes // 60}h"
-        elif minutes >= 60:
-            threshold_str = f"{minutes // 60}h {minutes % 60}m"
-        else:
-            threshold_str = f"{minutes}m"
-
-        embed = discord.Embed(title="💬  Dead Chat Settings", color=discord.Color.from_rgb(255, 182, 193))
-        embed.add_field(name="⏱️ Silence Interval", value=f"`{threshold_str}` of inactivity before Lumi revives", inline=False)
-        embed.add_field(name="📢 Revival Channels", value=channels_str, inline=False)
-        embed.set_footer(text="Use /deadchat interval and /deadchat add to configure")
-        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot):
