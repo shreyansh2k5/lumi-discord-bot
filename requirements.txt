@@ -1,7 +1,5 @@
-discord.py[voice]
+discord.py
 python-dotenv
 aiohttp
 firebase-admin
 google-cloud-firestore>=2.0.0
-PyNaCl
-yt-dlp

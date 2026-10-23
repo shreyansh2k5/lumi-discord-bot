@@ -5,6 +5,8 @@ from discord import app_commands
 from discord.ext import commands
 import time
 
+from core.embeds import PINK
+
 
 class Basic(commands.Cog):
     def __init__(self, bot):
@@ -40,14 +42,6 @@ class Basic(commands.Cog):
         embed.add_field(name="🐾 Pet Shop", value=(
             "`shop` — Browse available pets\n"
             "`shop buy <pet>` — Adopt a pet"
-        ), inline=False)
-        embed.add_field(name="🎵 Music", value=(
-            "`play <song/URL>` — Play from YouTube\n"
-            "`play` — Show all music commands\n"
-            "`search <query>` — Pick from 5 results\n"
-            "`skip` — Skip current song\n"
-            "`pause` / `resume` — Toggle pause\n"
-            "`remove` — Remove last queued song"
         ), inline=False)
         embed.add_field(name="ℹ️ Server", value=(
             "`/status` — Lumi's uptime & latency\n"

@@ -74,8 +74,6 @@ def _build_context_block(recent_msgs: list[dict], current_author_id: int, curren
 
 @bot.event
 async def on_message(message: discord.Message):
-    await bot.process_commands(message)
-
     if message.author == bot.user:
         return
 
@@ -105,6 +103,8 @@ async def on_message(message: discord.Message):
                 pass
             return
 
+    await bot.process_commands(message)
+
     # ── Decide if Lumi should respond ───────────────────────────
     is_dm           = message.guild is None
     is_mention      = bot.user in message.mentions and not message.reference
@@ -122,18 +122,6 @@ async def on_message(message: discord.Message):
         return
     if message.content.startswith("$"):
         return
-
-    # ── @lumi play <query> shortcut ──────────────────────────────
-    clean_check = message.clean_content.lower()
-    for part in [f"@{bot.user.display_name.lower()} play ", f"@{bot.user.name.lower()} play "]:
-        if clean_check.startswith(part):
-            query = message.clean_content[len(part):].strip()
-            if query:
-                ctx = await bot.get_context(message)
-                music_cog = bot.get_cog("Music")
-                if music_cog:
-                    await music_cog.play(ctx, query=query)
-            return
 
     # ── Build and send AI response ───────────────────────────────
     async with message.channel.typing():

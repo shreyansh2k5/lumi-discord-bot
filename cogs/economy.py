@@ -21,7 +21,7 @@ from economy.logic import (
     process_roll, calculate_raid_result,
 )
 from economy.ui import BlackjackView
-from economy.transactions import db  # for leaderboard query
+import economy.transactions as transactions
 from core.embeds import send_intro, result_embed, PINK, GOLD, BLUE
 
 
@@ -162,6 +162,8 @@ class Economy(commands.Cog):
 
     @commands.command(name="give")
     async def give(self, ctx: commands.Context, target: discord.User, amount: int):
+        if target.id == ctx.author.id:
+            return await ctx.send(embed=discord.Embed(description="❌ You can't give coins to yourself!", color=discord.Color.red()))
         if amount <= 0:
             return await ctx.send(embed=discord.Embed(description="❌ Amount must be positive.", color=discord.Color.red()))
         intro   = await send_intro(ctx, "💸", "Transferring Coins", f"*Sending `{amount:,}` {LUNA_NAME} to {target.display_name}...*")
@@ -272,7 +274,7 @@ class Economy(commands.Cog):
     @commands.command(name="leaderboard")
     async def leaderboard(self, ctx: commands.Context):
         intro = await send_intro(ctx, "🏆", "Loading Leaderboard", "*Counting everyone's coins...*", color=GOLD)
-        docs  = await db.collection("users").order_by("coins", direction="DESCENDING").limit(10).get()
+        docs  = await transactions.db.collection("users").order_by("coins", direction="DESCENDING").limit(10).get()
         medals = ["🥇", "🥈", "🥉"]
         lines  = []
         for i, doc in enumerate(docs, start=1):

@@ -76,7 +76,7 @@ def _normalize(text: str) -> str:
 def check_bad_words(message: str, guild_id: int, guild_settings: dict) -> bool:
     normalized = _normalize(message)
     return any(
-        re.search(r"\b" + re.escape(word) + r"\b", normalized)
+        re.search(r"\b" + re.escape(_normalize(word)) + r"\b", normalized)
         for word in guild_settings["bad_words"]
     )
 

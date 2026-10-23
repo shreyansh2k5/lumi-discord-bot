@@ -1,6 +1,6 @@
 # ✨ Lumi — Discord Bot
 
-Lumi is a sweet, playful, and caring bot built to make your Discord server more fun, safer, and more active — with **AI chat**, **moderation**, **economy + games**, **music**, and **dead-chat revival**.
+Lumi is a sweet, playful, and caring bot built to make your Discord server more fun, safer, and more active — with **AI chat**, **moderation**, **economy + games**, and **dead-chat revival**.
 
 ---
 
@@ -47,10 +47,6 @@ Earn and play inside your server:
 - Leaderboard + pet shop system
 
 Tip: use `$help` (or `/help`) to see everything in one place.
-
-### 🎵 Music
-- Play audio in voice channels (YouTube via search/links)
-- Queue + skip/pause/resume controls (see `$play` help in Discord)
 
 ### 📊 Server Utilities
 - `/status` — uptime, latency, server count
