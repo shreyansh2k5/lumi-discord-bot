@@ -1,0 +1,7 @@
+services:
+  lumi:
+    build:
+      context: .
+    restart: unless-stopped
+    env_file:
+      - .env

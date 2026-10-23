@@ -59,3 +59,92 @@ Tip: use `$help` (or `/help`) to see everything in one place.
 - Type **`$help`** to see the full command list
 - Use **`/status`** to confirm Lumi is online
 - Configure moderation and dead-chat via the `/badword`, `/exception`, and `/deadchat` command groups
+
+## 🛠️ Installation
+
+### Configure environment variables
+
+Create a `.env` file in the project root with the following values:
+
+```dotenv
+DISCORD_TOKEN=your_discord_bot_token
+GROQ_API_KEY=your_groq_api_key
+OPENROUTER_API_KEY=your_openrouter_api_key
+FIREBASE_SERVICE_ACCOUNT_KEY=your_firebase_service_account_json
+BOT_OWNER_ID=your_discord_user_id
+```
+
+Keep `.env` private and never commit it. The Firebase service account value must be valid JSON on one line (the private key should contain escaped `\n` characters).
+
+### 🐍 Run without Docker
+
+Use this method if Python is installed on the host.
+
+1. Install [Python 3.13](https://www.python.org/downloads/).
+2. Clone the repository and open the project directory:
+
+   ```powershell
+   git clone https://github.com/shreyansh2k5/lumi-discord-bot.git
+   cd lumi-discord-bot
+   ```
+
+3. Create and activate a virtual environment:
+
+   ```powershell
+   py -3.13 -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
+
+   On macOS or Linux, use:
+
+   ```bash
+   python3.13 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+4. Install dependencies:
+
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
+
+5. Create the `.env` file described above, then start Lumi:
+
+   ```powershell
+   python main.py
+   ```
+
+Keep the terminal open while the bot is running. Press `Ctrl+C` to stop it.
+
+### 🐳 Run with Docker
+
+Docker keeps the bot runtime isolated and automatically restarts it after a failure or host reboot.
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+2. Clone the repository and open the project directory if you have not already:
+
+   ```powershell
+   git clone https://github.com/shreyansh2k5/lumi-discord-bot.git
+   cd lumi-discord-bot
+   ```
+
+3. Create the `.env` file described above in the project root.
+4. Build and start Lumi:
+
+   ```powershell
+   docker compose up -d --build
+   ```
+
+5. Follow the bot logs:
+
+   ```powershell
+   docker compose logs -f lumi
+   ```
+
+6. Stop the bot:
+
+   ```powershell
+   docker compose down
+   ```
+
+The container does not expose ports. Discord, OpenRouter, and Firebase connections are outbound connections initiated by the bot.
