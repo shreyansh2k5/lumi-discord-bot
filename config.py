@@ -10,4 +10,4 @@ COMMAND_PREFIX = "$"
 
 # ── AI ───────────────────────────────────────────────────────────
 AI_MAX_TOKENS     = 200
-AI_MAX_INPUT_CHARS = 400  # trim user input before sending to API
+AI_MAX_INPUT_CHARS = 7000  # trim user input before sending to API
