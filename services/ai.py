@@ -18,7 +18,11 @@ GROQ_MODEL_ID = "openai/gpt-oss-120b"
 OPENROUTER_MODEL_ID = "dots-studio/dots-3-note-preview:free"
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-AI_UNAVAILABLE_MESSAGE = "⚠️ AI is temporarily unavailable. Please try again in a few minutes."
+AI_UNAVAILABLE_MESSAGE = "⚠️ My brain is a bit fuzzy right now..."
+
+
+class AIUnavailableError(Exception):
+    """Raised when all configured AI response attempts have failed."""
 
 
 class ProviderError(Exception):
@@ -99,7 +103,12 @@ class HTTPAIProvider(AIProvider):
                         retryable=retryable,
                     )
 
-                text = (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+                try:
+                    text = (
+                        data["choices"][0]["message"].get("content") or ""
+                    ).strip()
+                except (AttributeError, IndexError, KeyError, TypeError) as error:
+                    raise ProviderError("returned an invalid response") from error
                 if not text:
                     raise ProviderError("returned no message text")
                 return text
@@ -146,53 +155,43 @@ class ProviderManager:
         self.fallback_provider = fallback_provider
         self.active_provider = self.providers.get(primary_provider)
 
-    async def generate_response(self, messages: list[dict[str, str]]) -> str:
+    async def generate_response(
+        self,
+        messages: list[dict[str, str]],
+    ) -> str:
         primary = self.providers.get(self.primary_provider)
         fallback = self.providers.get(self.fallback_provider)
         if primary is None:
             print(f"[AI] Unknown primary provider: {self.primary_provider}")
-            return AI_UNAVAILABLE_MESSAGE
+            raise AIUnavailableError("No primary AI provider is configured.")
 
-        primary_label = self._provider_label(primary.name)
+        last_error: ProviderError | None = None
         for attempt in range(3):
             try:
                 response = await primary.generate(messages)
                 self.active_provider = primary
-                if attempt:
-                    print(f"[{primary_label}] Success after retry")
                 return response
-            except ProviderConfigurationError as error:
-                print(f"[{primary_label}] {error}")
-                return AI_UNAVAILABLE_MESSAGE
             except ProviderError as error:
-                print(f"[{primary_label}] {error}")
+                last_error = error
                 if not error.retryable:
-                    return AI_UNAVAILABLE_MESSAGE
+                    break
                 if attempt < 2:
                     await asyncio.sleep(2**attempt)
 
         if fallback is None:
             print(f"[AI] Unknown fallback provider: {self.fallback_provider}")
-            return AI_UNAVAILABLE_MESSAGE
+            raise AIUnavailableError from last_error
 
-        fallback_label = self._provider_label(fallback.name)
-        print(f"[Fallback] Switching to {fallback_label}")
+        if last_error is not None:
+            print(f"[AI] Primary provider unavailable; using fallback: {last_error}")
+
         try:
             response = await fallback.generate(messages)
             self.active_provider = fallback
-            print(f"[{fallback_label}] Success")
             return response
         except ProviderError as error:
-            print(f"[{fallback_label}] {error}")
-            return AI_UNAVAILABLE_MESSAGE
-
-    @staticmethod
-    def _provider_label(provider_name: str) -> str:
-        return {
-            "groq": "Groq",
-            "openrouter": "OpenRouter",
-        }.get(provider_name, provider_name)
-
+            print(f"[AI] All providers failed: {error}")
+            raise AIUnavailableError from error
 
 ai_manager = ProviderManager()
 

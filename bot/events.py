@@ -2,13 +2,14 @@
 
 import time
 import datetime
+import asyncio
 import discord
 from discord.ext import commands
 
 from bot.client import bot, channel_last_message
 import moderation.automod as automod
 from moderation.automod import check_bad_words, is_role_exempt, ensure_guild_settings_in_cache
-from services.ai import query_model
+from services.ai import AI_UNAVAILABLE_MESSAGE, AIUnavailableError, query_model
 from services.memory import get_memory, add_to_memory
 from config import AI_MAX_INPUT_CHARS
 
@@ -25,7 +26,6 @@ _USAGE_HINTS = {
     "ban":       "🔨 **Usage:** `$ban <@user> [reason]`",
     "shop buy":  "🐾 **Usage:** `$shop buy <pet>`\n**Example:** `$shop buy cat`",
 }
-
 
 def _get_time_of_day() -> str:
     hour = datetime.datetime.now().hour
@@ -164,13 +164,23 @@ async def on_message(message: discord.Message):
         history  = get_memory(user_id)
         messages = history + [{"role": "user", "content": full_user_content}]
 
-        response = await query_model(
-            messages=messages,
-            server_emojis=emoji_str,
-            server_name=server_name,
-            channel_name=channel_name,
-            time_of_day=time_of_day,
-        )
+        try:
+            response = await asyncio.wait_for(
+                query_model(
+                    messages=messages,
+                    server_emojis=emoji_str,
+                    server_name=server_name,
+                    channel_name=channel_name,
+                    time_of_day=time_of_day,
+                ),
+                timeout=45,
+            )
+        except (AIUnavailableError, asyncio.TimeoutError) as error:
+            print(f"[AI] Provider unavailable: {error}")
+            response = AI_UNAVAILABLE_MESSAGE
+        except Exception as error:
+            print(f"[AI] Unexpected error: {error}")
+            response = AI_UNAVAILABLE_MESSAGE
 
         # Only store the clean input in memory (not the whole context block)
         add_to_memory(user_id, "user",      clean_input)

@@ -7,7 +7,7 @@ import discord
 from discord.ext import commands, tasks
 
 from config import COMMAND_PREFIX
-from services.ai import query_model
+from services.ai import AI_UNAVAILABLE_MESSAGE, AIUnavailableError, query_model
 import moderation.automod as automod
 
 # Per-channel last-message timestamp: {channel_id: float}
@@ -83,11 +83,14 @@ async def revive_chat_loop():
                 messages = [{"role": "user", "content": "The chat has been dead for a while. Start a fun, cute conversation to get people talking again!"}]
 
                 async with channel.typing():
-                    response = await query_model(
-                        messages=messages,
-                        server_emojis=emoji_str,
-                        server_name=guild.name,
-                    )
+                    try:
+                        response = await query_model(
+                            messages=messages,
+                            server_emojis=emoji_str,
+                            server_name=guild.name,
+                        )
+                    except AIUnavailableError:
+                        response = AI_UNAVAILABLE_MESSAGE
                     
                     for e in guild.emojis:
                         response = response.replace(f":{e.name}:", str(e))
