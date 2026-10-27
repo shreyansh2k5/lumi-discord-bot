@@ -1,6 +1,8 @@
 # config.py
 # Bot-wide constants. Non-secret values only — secrets stay in .env
 
+import os
+
 # ── Bot ─────────────────────────────────────────────────────────
 COMMAND_PREFIX = "$"
 
@@ -11,3 +13,5 @@ COMMAND_PREFIX = "$"
 # ── AI ───────────────────────────────────────────────────────────
 AI_MAX_TOKENS     = 200
 AI_MAX_INPUT_CHARS = 7000  # trim user input before sending to API
+PRIMARY_PROVIDER  = os.getenv("PRIMARY_PROVIDER", "groq").lower()
+FALLBACK_PROVIDER = os.getenv("FALLBACK_PROVIDER", "openrouter").lower()

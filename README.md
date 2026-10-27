@@ -70,6 +70,8 @@ Create a `.env` file in the project root with the following values:
 DISCORD_TOKEN=your_discord_bot_token
 GROQ_API_KEY=your_groq_api_key
 OPENROUTER_API_KEY=your_openrouter_api_key
+PRIMARY_PROVIDER=groq
+FALLBACK_PROVIDER=openrouter
 FIREBASE_SERVICE_ACCOUNT_KEY=your_firebase_service_account_json
 BOT_OWNER_ID=your_discord_user_id
 ```

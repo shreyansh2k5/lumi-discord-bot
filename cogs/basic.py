@@ -6,6 +6,7 @@ from discord.ext import commands
 import time
 
 from core.embeds import PINK
+from services.ai import ai_manager
 
 
 class Basic(commands.Cog):
@@ -64,10 +65,14 @@ class Basic(commands.Cog):
         uptime_secs = int(time.time() - self.bot.start_time)
         hours, rem  = divmod(uptime_secs, 3600)
         minutes, secs = divmod(rem, 60)
+        active_provider = ai_manager.active_provider
+        ai_model = active_provider.model_id if active_provider else "Unavailable"
+        ai_provider = active_provider.name.title() if active_provider else "Unavailable"
         await interaction.followup.send(
             f"🛰️ Online as **{self.bot.user.name}**\n"
             f"⏱️ Uptime: `{hours}h {minutes}m {secs}s`\n"
             f"📡 Latency: `{round(self.bot.latency * 1000)}ms`\n"
+            f"🤖 AI Model: `{ai_model}` ({ai_provider})\n"
             f"🏠 Servers: `{len(self.bot.guilds)}`"
         )
 

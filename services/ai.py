@@ -1,24 +1,200 @@
-# services/ai.py
-# OpenRouter API wrapper (Nemotron model)
+"""AI provider abstraction and the prompt-preserving chat interface."""
 
+import asyncio
 import os
+from abc import ABC, abstractmethod
+from typing import Any
 
 import aiohttp
 
-from config import AI_MAX_TOKENS
+from config import (
+    AI_MAX_TOKENS,
+    FALLBACK_PROVIDER,
+    PRIMARY_PROVIDER,
+)
 from core.personality import get_system_prompt, get_temperature
 
-MODEL_ID = "nvidia/nemotron-3.5-super-vl:free"
-API_URL = "https://openrouter.ai/api/v1/chat/completions"
+GROQ_MODEL_ID = "openai/gpt-oss-120b"
+OPENROUTER_MODEL_ID = "dots-studio/dots-3-note-preview:free"
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+AI_UNAVAILABLE_MESSAGE = "⚠️ AI is temporarily unavailable. Please try again in a few minutes."
 
-_session: aiohttp.ClientSession | None = None
+
+class ProviderError(Exception):
+    """An error returned by or encountered while calling an AI provider."""
+
+    def __init__(self, message: str, *, retryable: bool = False):
+        super().__init__(message)
+        self.retryable = retryable
 
 
-async def _get_session() -> aiohttp.ClientSession:
-    global _session
-    if _session is None or _session.closed:
-        _session = aiohttp.ClientSession()
-    return _session
+class ProviderConfigurationError(ProviderError):
+    """A provider cannot be used because its local configuration is invalid."""
+
+
+class AIProvider(ABC):
+    name: str
+    api_key_environment_variable: str
+    api_url: str
+    model_id: str
+
+    @abstractmethod
+    async def generate(self, messages: list[dict[str, str]]) -> str:
+        raise NotImplementedError
+
+
+class HTTPAIProvider(AIProvider):
+    """Shared OpenAI-compatible HTTP implementation for providers."""
+
+    def __init__(self) -> None:
+        self._session: aiohttp.ClientSession | None = None
+
+    async def _get_session(self) -> aiohttp.ClientSession:
+        if self._session is None or self._session.closed:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=30)
+            )
+        return self._session
+
+    async def generate(self, messages: list[dict[str, str]]) -> str:
+        api_key = os.getenv(self.api_key_environment_variable)
+        if not api_key:
+            raise ProviderConfigurationError(
+                f"{self.api_key_environment_variable} not set."
+            )
+
+        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+        if self.name == "openrouter":
+            headers.update({
+                "HTTP-Referer": "https://lumi-bot.app",
+                "X-Title": "Lumi Discord Bot",
+            })
+
+        body = {
+            "model": self.model_id,
+            "messages": messages,
+            "temperature": get_temperature(),
+            "max_tokens": AI_MAX_TOKENS,
+        }
+        if self.name == "openrouter":
+            body["reasoning"] = {"enabled": False}
+
+        try:
+            session = await self._get_session()
+            async with session.post(self.api_url, json=body, headers=headers) as response:
+                data: Any = await response.json(content_type=None)
+                if response.status != 200:
+                    if response.status == 429:
+                        message = "Rate limited (429)"
+                    elif response.status >= 500:
+                        message = f"Server error ({response.status})"
+                    elif response.status in (401, 403):
+                        message = "Authentication failed"
+                    else:
+                        message = f"HTTP {response.status}: {data}"
+                    retryable = response.status == 429 or response.status >= 500
+                    raise ProviderError(
+                        message,
+                        retryable=retryable,
+                    )
+
+                text = (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+                if not text:
+                    raise ProviderError("returned no message text")
+                return text
+        except ProviderError:
+            raise
+        except (asyncio.TimeoutError, aiohttp.ServerTimeoutError) as error:
+            raise ProviderError("Timeout", retryable=True) from error
+        except aiohttp.ClientConnectionError as error:
+            raise ProviderError(f"Connection error: {error}", retryable=True) from error
+        except aiohttp.ClientError as error:
+            raise ProviderError(str(error)) from error
+        except ValueError as error:
+            raise ProviderError(f"Invalid response: {error}") from error
+
+
+class GroqProvider(HTTPAIProvider):
+    name = "groq"
+    api_key_environment_variable = "GROQ_API_KEY"
+    api_url = GROQ_API_URL
+    model_id = GROQ_MODEL_ID
+
+
+class OpenRouterProvider(HTTPAIProvider):
+    name = "openrouter"
+    api_key_environment_variable = "OPENROUTER_API_KEY"
+    api_url = OPENROUTER_API_URL
+    model_id = OPENROUTER_MODEL_ID
+
+
+class ProviderManager:
+    """Selects providers and falls back only for transient primary failures."""
+
+    def __init__(
+        self,
+        providers: dict[str, AIProvider] | None = None,
+        primary_provider: str = PRIMARY_PROVIDER,
+        fallback_provider: str = FALLBACK_PROVIDER,
+    ) -> None:
+        self.providers = providers or {
+            "groq": GroqProvider(),
+            "openrouter": OpenRouterProvider(),
+        }
+        self.primary_provider = primary_provider
+        self.fallback_provider = fallback_provider
+        self.active_provider = self.providers.get(primary_provider)
+
+    async def generate_response(self, messages: list[dict[str, str]]) -> str:
+        primary = self.providers.get(self.primary_provider)
+        fallback = self.providers.get(self.fallback_provider)
+        if primary is None:
+            print(f"[AI] Unknown primary provider: {self.primary_provider}")
+            return AI_UNAVAILABLE_MESSAGE
+
+        primary_label = self._provider_label(primary.name)
+        for attempt in range(3):
+            try:
+                response = await primary.generate(messages)
+                self.active_provider = primary
+                if attempt:
+                    print(f"[{primary_label}] Success after retry")
+                return response
+            except ProviderConfigurationError as error:
+                print(f"[{primary_label}] {error}")
+                return AI_UNAVAILABLE_MESSAGE
+            except ProviderError as error:
+                print(f"[{primary_label}] {error}")
+                if not error.retryable:
+                    return AI_UNAVAILABLE_MESSAGE
+                if attempt < 2:
+                    await asyncio.sleep(2**attempt)
+
+        if fallback is None:
+            print(f"[AI] Unknown fallback provider: {self.fallback_provider}")
+            return AI_UNAVAILABLE_MESSAGE
+
+        fallback_label = self._provider_label(fallback.name)
+        print(f"[Fallback] Switching to {fallback_label}")
+        try:
+            response = await fallback.generate(messages)
+            self.active_provider = fallback
+            print(f"[{fallback_label}] Success")
+            return response
+        except ProviderError as error:
+            print(f"[{fallback_label}] {error}")
+            return AI_UNAVAILABLE_MESSAGE
+
+    @staticmethod
+    def _provider_label(provider_name: str) -> str:
+        return {
+            "groq": "Groq",
+            "openrouter": "OpenRouter",
+        }.get(provider_name, provider_name)
+
+
+ai_manager = ProviderManager()
 
 
 async def query_model(
@@ -28,12 +204,7 @@ async def query_model(
     channel_name: str = "",
     time_of_day: str = "",
 ) -> str:
-    """Send conversation history to OpenRouter using Nemotron."""
-    api_key = os.getenv("OPENROUTER_API_KEY")
-    if not api_key:
-        print("[ERROR] OPENROUTER_API_KEY not set.")
-        return "⚠️ I lost my API key... please check my settings!"
-
+    """Build the existing Lumi prompt and send it through the provider manager."""
     system_prompt = get_system_prompt(
         server_emojis=server_emojis,
         server_name=server_name,
@@ -41,7 +212,7 @@ async def query_model(
         time_of_day=time_of_day,
     )
 
-    ai_messages = [{"role": "system", "content": system_prompt}]
+    ai_messages: list[dict[str, str]] = [{"role": "system", "content": system_prompt}]
     for msg in messages:
         content = msg.get("content", "").strip()
         if content:
@@ -51,34 +222,4 @@ async def query_model(
     if ai_messages[-1]["role"] != "user":
         ai_messages.append({"role": "user", "content": "Continue."})
 
-    body = {
-        "model": MODEL_ID,
-        "messages": ai_messages,
-        "temperature": get_temperature(),
-        "max_tokens": AI_MAX_TOKENS,
-        "reasoning": {"enabled": False},
-    }
-    headers = {
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://lumi-bot.app",
-        "X-Title": "Lumi Discord Bot",
-    }
-    headers["Authorization"] = "Bearer " + api_key
-
-    try:
-        session = await _get_session()
-        async with session.post(API_URL, json=body, headers=headers) as resp:
-            data = await resp.json(content_type=None)
-            if resp.status == 200:
-                message = data.get("choices", [{}])[0].get("message", {})
-                text = (message.get("content") or "").strip()
-                if text:
-                    return text
-                print(f"[ERROR] OpenRouter returned no message text: {data}")
-                return "⚠️ I received an empty response from my AI service."
-
-            print(f"[ERROR] OpenRouter {resp.status}: {data}")
-            return "⚠️ My brain is a bit fuzzy right now..."
-    except Exception as e:
-        print(f"[ERROR] OpenRouter request failed: {e}")
-        return "💥 Lumi crashed into a wall of code!"
+    return await ai_manager.generate_response(ai_messages)
