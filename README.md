@@ -39,6 +39,7 @@ Bring life back when channels go quiet:
 - `/deadchat remove` — stop reviving in a channel
 - `/deadchat view` — list configured channels
 - `/deadchat interval` — set how long chat must be inactive before reviving
+- Configure welcome messages from `/deadchat_configuration`; they are off by default and only send to the selected channel
 
 ### 💰 Economy + Games
 Earn and play inside your server:

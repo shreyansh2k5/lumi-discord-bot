@@ -40,6 +40,13 @@ def _build_embed(guild: discord.Guild, gs: dict, *, saved: bool = False) -> disc
 
     minutes = automod.get_revive_threshold(guild.id, gs)
     threshold_str = _fmt_minutes(minutes)
+    welcome_enabled, welcome_channel_id = automod.get_welcome_settings(guild.id, gs)
+    welcome_channel = guild.get_channel(welcome_channel_id) if welcome_channel_id else None
+    welcome_str = (
+        f"✅ Enabled in {welcome_channel.mention}"
+        if welcome_enabled and welcome_channel
+        else "❌ Disabled"
+    )
 
     desc = (
         "✅ **Settings saved!** Here's your updated configuration."
@@ -60,6 +67,11 @@ def _build_embed(guild: discord.Guild, gs: dict, *, saved: bool = False) -> disc
     embed.add_field(
         name="📢 Revival Channels",
         value=channels_str,
+        inline=False,
+    )
+    embed.add_field(
+        name="👋 Welcome Messages",
+        value=welcome_str,
         inline=False,
     )
     if not saved:
@@ -84,7 +96,7 @@ class IntervalSelect(discord.ui.Select):
             min_values=1,
             max_values=1,
             options=options,
-            row=1,
+            row=0,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -101,7 +113,7 @@ class AddChannelSelect(discord.ui.ChannelSelect):
             min_values=1,
             max_values=25,
             channel_types=[discord.ChannelType.text],
-            row=2,
+            row=1,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -128,7 +140,7 @@ class RemoveChannelSelect(discord.ui.Select):
             max_values=len(options),
             options=options,
             disabled=disabled,
-            row=3,
+            row=2,
         )
 
     async def callback(self, interaction: discord.Interaction):
@@ -136,6 +148,41 @@ class RemoveChannelSelect(discord.ui.Select):
             int(v) for v in self.values if v != "__none__"
         ]
         await interaction.response.edit_message(view=self.view)
+
+
+class WelcomeChannelSelect(discord.ui.ChannelSelect):
+    def __init__(self):
+        super().__init__(
+            placeholder="👋 Choose welcome channel…",
+            min_values=1,
+            max_values=1,
+            channel_types=[discord.ChannelType.text],
+            row=3,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        self.view.pending_welcome_channel = self.values[0].id
+        await interaction.response.edit_message(view=self.view)
+
+
+class WelcomeToggleButton(discord.ui.Button):
+    def __init__(self, enabled: bool):
+        super().__init__(
+            label="👋 Welcome: On" if enabled else "👋 Welcome: Off",
+            style=discord.ButtonStyle.success if enabled else discord.ButtonStyle.secondary,
+            row=4,
+        )
+
+    async def callback(self, interaction: discord.Interaction):
+        view: DeadChatConfigView = self.view
+        view.pending_welcome_enabled = not view.pending_welcome_enabled
+        self.label = "👋 Welcome: On" if view.pending_welcome_enabled else "👋 Welcome: Off"
+        self.style = (
+            discord.ButtonStyle.success
+            if view.pending_welcome_enabled
+            else discord.ButtonStyle.secondary
+        )
+        await interaction.response.edit_message(view=view)
 
 
 class SaveButton(discord.ui.Button):
@@ -163,6 +210,15 @@ class SaveButton(discord.ui.Button):
 
         for cid in view.pending_remove_channels:
             await automod.remove_revive_channel(guild_id, cid, gs)
+        if view.pending_welcome_channel is not None:
+            await automod.set_welcome_settings(
+                guild_id,
+                view.pending_welcome_enabled,
+                view.pending_welcome_channel,
+                gs,
+            )
+        elif not view.pending_welcome_enabled:
+            await automod.set_welcome_settings(guild_id, False, None, gs)
 
         # Disable all components and stop the view
         for item in view.children:
@@ -182,6 +238,9 @@ class DeadChatConfigView(discord.ui.View):
         self.pending_interval: int | None = None
         self.pending_add_channels: list[int] = []
         self.pending_remove_channels: list[int] = []
+        current_welcome_enabled, current_welcome_channel = automod.get_welcome_settings(guild.id, gs)
+        self.pending_welcome_enabled = current_welcome_enabled
+        self.pending_welcome_channel: int | None = current_welcome_channel
 
         current_minutes = automod.get_revive_threshold(guild.id, gs)
         current_channels = automod.get_revive_channels(guild.id, gs)
@@ -189,7 +248,9 @@ class DeadChatConfigView(discord.ui.View):
         self.add_item(IntervalSelect(current_minutes))
         self.add_item(AddChannelSelect())
         self.add_item(RemoveChannelSelect(guild, current_channels))
+        self.add_item(WelcomeToggleButton(current_welcome_enabled))
         self.add_item(SaveButton())
+        self.add_item(WelcomeChannelSelect())
 
     async def on_timeout(self):
         for item in self.children:

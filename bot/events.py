@@ -231,9 +231,25 @@ async def on_command_error(ctx: commands.Context, error):
 
 @bot.event
 async def on_member_join(member: discord.Member):
-    ch = member.guild.system_channel
-    if ch and ch.permissions_for(member.guild.me).send_messages:
-        await ch.send(
-            f"Yay! Everyone say hi to {member.mention}! 💖 "
-            f"Welcome to **{member.guild.name}** — I'm Lumi, your AI bestie! Type `$help` to see what I can do~ ✨"
+    await ensure_guild_settings_in_cache(member.guild.id)
+    guild_settings = automod._guild_settings_cache.get(member.guild.id, {})
+    welcome_enabled, welcome_channel_id = automod.get_welcome_settings(
+        member.guild.id,
+        guild_settings,
+    )
+    if not welcome_enabled or welcome_channel_id is None:
+        return
+
+    ch = member.guild.get_channel(welcome_channel_id)
+    bot_member = member.guild.me
+    if ch is None or bot_member is None or not ch.permissions_for(bot_member).send_messages:
+        print(
+            f"[Welcome] Cannot send welcome message in channel "
+            f"{welcome_channel_id} for guild {member.guild.id}."
         )
+        return
+
+    await ch.send(
+        f"Yay! Everyone say hi to {member.mention}! 💖 "
+        f"Welcome to **{member.guild.name}** — I'm Lumi, your AI bestie! Type `$help` to see what I can do~ ✨"
+    )

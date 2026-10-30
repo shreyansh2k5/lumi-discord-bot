@@ -6,7 +6,7 @@ from firebase_admin import firestore
 
 _firestore_db_instance = None
 
-# Cache: {guild_id: {'bad_words': set(), 'exempt_roles': set(), 'revive_channels': set(), 'revive_threshold': int}}
+# Cache: {guild_id: {'bad_words': set(), 'exempt_roles': set(), 'revive_channels': set(), 'revive_threshold': int, 'welcome_enabled': bool, 'welcome_channel': int | None}}
 _guild_settings_cache: dict = {}
 
 
@@ -22,17 +22,34 @@ async def _load_guild_settings_from_firestore(guild_id: int):
         return
     try:
         doc = await _firestore_db_instance.collection("guilds").document(str(guild_id)).get()
-        settings = {"bad_words": set(), "exempt_roles": set(), "revive_channels": set(), "revive_threshold": 120}
+        settings = {
+            "bad_words": set(),
+            "exempt_roles": set(),
+            "revive_channels": set(),
+            "revive_threshold": 120,
+            "welcome_enabled": False,
+            "welcome_channel": None,
+        }
         if doc.exists:
             data = doc.to_dict()
             settings["bad_words"]        = set(data.get("bad_words", []))
             settings["exempt_roles"]     = set(data.get("exempt_roles", []))
             settings["revive_channels"]  = set(int(c) for c in data.get("revive_channels", []))
             settings["revive_threshold"] = int(data.get("revive_threshold", 120))
+            settings["welcome_enabled"] = bool(data.get("welcome_enabled", False))
+            welcome_channel = data.get("welcome_channel")
+            settings["welcome_channel"] = int(welcome_channel) if welcome_channel else None
         _guild_settings_cache[guild_id] = settings
     except Exception as e:
         print(f"[Automod] Error loading settings for guild {guild_id}: {e}")
-        _guild_settings_cache[guild_id] = {"bad_words": set(), "exempt_roles": set(), "revive_channels": set(), "revive_threshold": 120}
+        _guild_settings_cache[guild_id] = {
+            "bad_words": set(),
+            "exempt_roles": set(),
+            "revive_channels": set(),
+            "revive_threshold": 120,
+            "welcome_enabled": False,
+            "welcome_channel": None,
+        }
 
 
 async def _save_guild_settings_to_firestore(guild_id: int):
@@ -44,6 +61,8 @@ async def _save_guild_settings_to_firestore(guild_id: int):
             "exempt_roles":    list(_guild_settings_cache[guild_id]["exempt_roles"]),
             "revive_channels":  list(_guild_settings_cache[guild_id].get("revive_channels", set())),
             "revive_threshold":  _guild_settings_cache[guild_id].get("revive_threshold", 120),
+            "welcome_enabled":  _guild_settings_cache[guild_id].get("welcome_enabled", False),
+            "welcome_channel":  _guild_settings_cache[guild_id].get("welcome_channel"),
         }, merge=True)
     except Exception as e:
         print(f"[Automod] Error saving settings for guild {guild_id}: {e}")
@@ -164,3 +183,25 @@ async def set_revive_threshold(guild_id: int, minutes: int, guild_settings: dict
 def get_revive_threshold(guild_id: int, guild_settings: dict) -> int:
     """Returns the dead-chat threshold in minutes for this guild (default 120)."""
     return guild_settings.get("revive_threshold", DEFAULT_REVIVE_THRESHOLD_MINUTES)
+
+
+# ── Welcome messages ─────────────────────────────────────────────
+
+async def set_welcome_settings(
+    guild_id: int,
+    enabled: bool,
+    channel_id: int | None,
+    guild_settings: dict,
+) -> None:
+    """Sets whether welcome messages are enabled and where they are sent."""
+    guild_settings["welcome_enabled"] = enabled
+    guild_settings["welcome_channel"] = channel_id
+    await _save_guild_settings_to_firestore(guild_id)
+
+
+def get_welcome_settings(guild_id: int, guild_settings: dict) -> tuple[bool, int | None]:
+    """Returns the welcome-message toggle and configured channel."""
+    return (
+        bool(guild_settings.get("welcome_enabled", False)),
+        guild_settings.get("welcome_channel"),
+    )
