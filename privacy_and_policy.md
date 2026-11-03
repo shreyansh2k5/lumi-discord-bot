@@ -54,7 +54,7 @@ These providers process data under their own policies:
 - [OpenRouter Privacy Policy](https://openrouter.ai/privacy) and [Data Collection](https://openrouter.ai/docs/guides/privacy/data-collection)
 - [Google Firebase Privacy and Security](https://firebase.google.com/support/privacy)
 
-We configure our AI provider accounts to disallow routing to providers that train on submitted data. Lumi does not sell personal data.
+We configure our AI provider accounts to avoid routing requests to providers that may train on submitted data, where supported by the provider's privacy controls.
 
 ## 5. Discord privileged intents
 
