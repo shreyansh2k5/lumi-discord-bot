@@ -2,6 +2,8 @@
 
 Lumi is a sweet, playful, and caring bot built to make your Discord server more fun, safer, and more active — with **AI chat**, **moderation**, **economy + games**, and **dead-chat revival**.
 
+**Privacy Policy:** https://lumi-privacy-policy.vercel.app
+
 ---
 
 ## ➕ Add Lumi to Your Server
